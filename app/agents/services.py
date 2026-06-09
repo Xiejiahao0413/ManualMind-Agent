@@ -4,6 +4,7 @@ from app.mcp_server import MCPToolExecutor, create_default_tool_registry
 from app.memory import InMemoryMemoryManager
 from app.schemas.diagnosis import DiagnosisState
 from app.schemas.retrieval import RetrievalResult
+from app.schemas.trace import TraceEvent
 from app.schemas.tools import ToolCallRecord
 from app.tools import (
     FallbackAction,
@@ -13,6 +14,7 @@ from app.tools import (
     ToolResultValidator,
     ToolRouter,
 )
+from app.tracing import InMemoryTraceManager
 
 
 class WorkflowToolService:
@@ -24,6 +26,7 @@ class WorkflowToolService:
         executor: MCPToolExecutor | None = None,
         result_validator: ToolResultValidator | None = None,
         retry_fallback_manager: RetryFallbackManager | None = None,
+        trace_manager: InMemoryTraceManager | None = None,
     ) -> None:
         self.router = router
         self.guard = guard
@@ -31,6 +34,7 @@ class WorkflowToolService:
         self.executor = executor or MCPToolExecutor(create_default_tool_registry())
         self.result_validator = result_validator or ToolResultValidator()
         self.retry_fallback_manager = retry_fallback_manager or RetryFallbackManager()
+        self.trace_manager = trace_manager
         self._result_cache: dict[str, dict[str, Any]] = {}
 
     async def run_retrieval_tools(self, state: DiagnosisState) -> DiagnosisState:
@@ -38,6 +42,14 @@ class WorkflowToolService:
         tool_names = self.router.route_query_type(query_type)
         state.workflow_events.append(
             {"event": "tool_routing_started", "tool_names": list(tool_names)}
+        )
+        self._trace_event(
+            state,
+            "tool_routing_started",
+            "workflow_tool_service",
+            "started",
+            "Tool routing started.",
+            {"query_type": query_type, "tool_names": list(tool_names)},
         )
 
         for tool_name in tool_names:
@@ -60,6 +72,18 @@ class WorkflowToolService:
                 retry_count=state.retry_count,
                 task_tool_call_count=len(state.tool_call_history),
             )
+            self._trace_event(
+                state,
+                "tool_call_started",
+                "workflow_tool_service",
+                "started",
+                "Tool call started.",
+                {
+                    "tool_name": tool_name,
+                    "args_signature": decision.args_signature,
+                    "retry_count": state.retry_count,
+                },
+            )
 
             if decision.status == "circuit_breaker_required":
                 state.handoff_required = True
@@ -72,6 +96,18 @@ class WorkflowToolService:
                     status="skipped",
                     error_type=decision.reason,
                     result_summary=decision.reason,
+                )
+                self._trace_tool_call(
+                    state,
+                    tool_name,
+                    decision.args_signature or f"blocked:{tool_name}",
+                    "skipped",
+                    state.retry_count,
+                    False,
+                    decision.reason,
+                    None,
+                    decision.reason,
+                    event_type="tool_call_failed",
                 )
                 break
 
@@ -87,6 +123,17 @@ class WorkflowToolService:
                 )
                 if cached_data is not None:
                     self._apply_tool_data(state, tool_name, cached_data)
+                self._trace_tool_call(
+                    state,
+                    tool_name,
+                    decision.args_signature,
+                    "success",
+                    state.retry_count,
+                    False,
+                    None,
+                    None,
+                    "reuse_cached",
+                )
                 continue
 
             if not decision.allowed or not decision.args_signature:
@@ -102,6 +149,18 @@ class WorkflowToolService:
                 if decision.reason == "sanitized_required":
                     state.handoff_required = True
                     state.handoff_reason = "sanitized_required"
+                self._trace_tool_call(
+                    state,
+                    tool_name,
+                    decision.args_signature or f"blocked:{tool_name}",
+                    "skipped",
+                    state.retry_count,
+                    False,
+                    decision.reason,
+                    None,
+                    decision.reason,
+                    event_type="tool_call_failed",
+                )
                 continue
 
             result = await self.executor.execute_tool(tool_name, args)
@@ -112,6 +171,19 @@ class WorkflowToolService:
                 if fallback in {FallbackAction.HUMAN_HANDOFF, FallbackAction.CIRCUIT_BREAKER_HANDOFF}:
                     state.handoff_required = True
                     state.handoff_reason = str(fallback)
+                self._trace_event(
+                    state,
+                    "fallback_decision",
+                    "workflow_tool_service",
+                    "completed",
+                    "Fallback decision recorded.",
+                    {
+                        "tool_name": tool_name,
+                        "error_type": result.error_type,
+                        "fallback_decision": str(fallback),
+                        "retry_count": state.retry_count,
+                    },
+                )
                 await self._record_call(
                     state=state,
                     tool_name=tool_name,
@@ -123,6 +195,18 @@ class WorkflowToolService:
                     error_type=result.error_type,
                     latency_ms=result.latency_ms,
                     result_summary=result.error_message,
+                )
+                self._trace_tool_call(
+                    state,
+                    tool_name,
+                    decision.args_signature,
+                    "failed",
+                    state.retry_count,
+                    fallback != FallbackAction.RETRY,
+                    result.error_type,
+                    result.latency_ms,
+                    result.error_message,
+                    event_type="tool_call_failed",
                 )
                 continue
 
@@ -138,8 +222,23 @@ class WorkflowToolService:
                 if fallback in {FallbackAction.HUMAN_HANDOFF, FallbackAction.CIRCUIT_BREAKER_HANDOFF}:
                     state.handoff_required = True
                     state.handoff_reason = validation.reason
+                self._trace_event(
+                    state,
+                    "fallback_decision",
+                    "workflow_tool_service",
+                    "completed",
+                    "Validation fallback decision recorded.",
+                    {
+                        "tool_name": tool_name,
+                        "error_type": validation.error_type.value if validation.error_type else None,
+                        "fallback_decision": str(fallback),
+                        "reason": validation.reason,
+                    },
+                )
 
             self._apply_tool_data(state, tool_name, data)
+            if tool_name == "manual_hybrid_search":
+                self._trace_retrieval(state, args, data)
             self._result_cache[decision.args_signature] = data
             record = await self._record_call(
                 state=state,
@@ -152,6 +251,17 @@ class WorkflowToolService:
                 result_summary=self._summarize_tool_result(tool_name, data),
             )
             self.guard.remember_success(record)
+            self._trace_tool_call(
+                state,
+                tool_name,
+                decision.args_signature,
+                "success",
+                state.retry_count,
+                False,
+                None,
+                result.latency_ms,
+                record.result_summary,
+            )
 
         state.source_refs = sorted(set(state.source_refs))
         if state.handoff_required:
@@ -160,6 +270,17 @@ class WorkflowToolService:
             state.retrieval_status = "completed"
         else:
             state.retrieval_status = "empty"
+        self._trace_event(
+            state,
+            "tool_routing_completed",
+            "workflow_tool_service",
+            "completed",
+            "Tool routing completed.",
+            {
+                "retrieval_status": state.retrieval_status,
+                "tool_call_count": len(state.tool_call_history),
+            },
+        )
         await self.memory.save_task(state)
         return state
 
@@ -303,3 +424,103 @@ class WorkflowToolService:
         if tool_name == "safety_rule_search":
             return f"safety_rules={len(data.get('safety_rules') or [])}"
         return str(data.get("status") or "ok")
+
+    def _trace_tool_call(
+        self,
+        state: DiagnosisState,
+        tool_name: str,
+        args_signature: str,
+        status: str,
+        retry_count: int,
+        fallback_used: bool,
+        error_type: str | None,
+        latency_ms: float | None,
+        result_summary: str | None,
+        event_type: str = "tool_call_completed",
+    ) -> None:
+        self._trace_event(
+            state,
+            event_type,
+            "workflow_tool_service",
+            status,
+            f"Tool call {status}: {tool_name}",
+            {
+                "tool_name": tool_name,
+                "args_signature": args_signature,
+                "retry_count": retry_count,
+                "fallback_used": fallback_used,
+                "error_type": error_type,
+                "result_summary": result_summary,
+            },
+            latency_ms=latency_ms,
+        )
+
+    def _trace_retrieval(
+        self,
+        state: DiagnosisState,
+        args: dict[str, Any],
+        data: dict[str, Any],
+    ) -> None:
+        results = data.get("results") or []
+        scores = [float(result.get("score") or 0.0) for result in results]
+        rerank_scores = [
+            float(result.get("rerank_score"))
+            for result in results
+            if result.get("rerank_score") is not None
+        ]
+        metadata_filter = {
+            key: value
+            for key, value in {
+                "device_name": args.get("device_name"),
+                "device_model": args.get("device_model"),
+                "content_types": args.get("content_types"),
+            }.items()
+            if value
+        }
+        self._trace_event(
+            state,
+            "retrieval_trace",
+            "workflow_tool_service",
+            "completed",
+            "Hybrid retrieval trace recorded.",
+            {
+                "query": args.get("query"),
+                "top_k_bm25": args.get("top_k_bm25"),
+                "top_k_dense": args.get("top_k_dense"),
+                "top_n_rerank": args.get("top_n_rerank"),
+                "candidate_count": len(results),
+                "final_count": len(results),
+                "metadata_filter": metadata_filter,
+                "max_score": max(scores) if scores else None,
+                "max_rerank_score": max(rerank_scores) if rerank_scores else None,
+                "retrieval_mode": data.get("retrieval_mode"),
+            },
+        )
+
+    def _trace_event(
+        self,
+        state: DiagnosisState,
+        event_type: str,
+        component: str,
+        status: str,
+        message: str,
+        metadata: dict[str, Any] | None = None,
+        latency_ms: float | None = None,
+    ) -> None:
+        if self.trace_manager is None or not state.trace_id or not state.request_id:
+            return
+        self.trace_manager.add_event(
+            state.trace_id,
+            TraceEvent(
+                trace_id=state.trace_id,
+                request_id=state.request_id,
+                session_id=state.session_id,
+                task_id=state.task_id,
+                event_type=event_type,
+                component=component,
+                status=status,
+                message=message,
+                metadata=metadata or {},
+                latency_ms=latency_ms,
+            ),
+        )

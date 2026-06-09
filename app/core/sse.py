@@ -13,6 +13,7 @@ def format_sse(event: str, data: dict[str, object]) -> str:
 async def diagnosis_event_stream(request: DiagnosisRequest) -> AsyncIterator[str]:
     workflow = DiagnosisWorkflow()
     state = DiagnosisWorkflow.from_request(request)
+    workflow.ensure_trace(state)
     stream_guard = StreamingOutputGuard()
 
     async def emit(event: str, data: dict[str, object]) -> AsyncIterator[str]:
@@ -36,6 +37,7 @@ async def diagnosis_event_stream(request: DiagnosisRequest) -> AsyncIterator[str
         {
             "session_id": request.session_id,
             "task_id": state.task_id,
+            "trace_id": state.trace_id,
             "sanitized_query": state.sanitized_query,
             "sensitive_detected": bool(state.sanitized_fields),
             "sanitized_fields": state.sanitized_fields,
@@ -50,6 +52,7 @@ async def diagnosis_event_stream(request: DiagnosisRequest) -> AsyncIterator[str
             event_name,
             {
                 "task_id": final_state.task_id,
+                "trace_id": final_state.trace_id,
                 **workflow_event,
                 "sensitive_detected": bool(final_state.sanitized_fields),
                 "sanitized_fields": final_state.sanitized_fields,
@@ -62,6 +65,7 @@ async def diagnosis_event_stream(request: DiagnosisRequest) -> AsyncIterator[str
             "handoff_required",
             {
                 "task_id": final_state.task_id,
+                "trace_id": final_state.trace_id,
                 "handoff_reason": final_state.handoff_reason,
                 "handoff_payload": final_state.handoff_payload,
                 "sensitive_detected": bool(final_state.sanitized_fields),
@@ -78,6 +82,7 @@ async def diagnosis_event_stream(request: DiagnosisRequest) -> AsyncIterator[str
         "final_answer",
         {
             "task_id": final_state.task_id,
+            "trace_id": final_state.trace_id,
             "final_answer": final_state.final_answer,
             "source_refs": final_state.source_refs,
             "sensitive_detected": bool(final_state.sanitized_fields),

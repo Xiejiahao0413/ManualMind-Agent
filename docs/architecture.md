@@ -111,4 +111,27 @@ Tool outputs are written back into dedicated state fields:
 
 SSE output now reports coarse workflow stages: `input_sanitized`, `diagnosis_completed`, `tool_routing_started`, `tool_call_completed`, `retrieval_completed`, `safety_review_completed`, and terminal `final_answer` or `handoff_required` events.
 
+## Trace And Evaluation
+
+Trace is separate from Memory. Memory stores operational state for sessions, tasks, tool loops, and safety logs. Trace stores observability events for debugging and evaluation.
+
+`InMemoryTraceManager` supports starting request traces, appending events, reading a trace, listing events, and summarizing event counts. Workflow and tool-service events include supervisor routing, diagnosis, tool routing, tool call started/completed/failed, retrieval trace metadata, fallback decisions, safety review, circuit breaker triggers, handoff creation, and final answer generation.
+
+Trace events are exposed through:
+
+- `GET /api/trace/{trace_id}`
+- `GET /api/trace/{trace_id}/events`
+
+Diagnosis SSE responses include `trace_id`, so callers can inspect the trace after a streamed response.
+
+The evaluation layer defines `EvalSample` and computes basic metrics without an LLM:
+
+- tool selection accuracy
+- fault code extraction accuracy
+- handoff decision accuracy
+- source coverage
+- safety coverage
+
+`POST /api/eval/run` runs samples through the current workflow and uses workflow outputs plus trace events to produce aggregate metrics and per-sample results.
+
 Real MCP execution, retrieval backends, LLM calls, and durable memory are still intentionally out of scope.

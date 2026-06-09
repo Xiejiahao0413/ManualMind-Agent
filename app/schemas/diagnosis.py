@@ -15,6 +15,8 @@ class DiagnosisRequest(BaseModel):
 
 class DiagnosisState(BaseModel):
     task_id: str
+    request_id: str | None = None
+    trace_id: str | None = None
     session_id: str
     user_query: str
     raw_query: str | None = None

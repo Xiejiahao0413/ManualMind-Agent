@@ -5,14 +5,18 @@ from uuid import uuid4
 from langgraph.graph import END, StateGraph
 
 from app.agents.services import WorkflowToolService
-from app.core.dependencies import get_memory_manager
+from app.core.dependencies import get_memory_manager, get_trace_manager
 from app.memory import InMemoryMemoryManager
 from app.security import sanitize_text
 from app.schemas.diagnosis import DiagnosisRequest, DiagnosisState
+from app.schemas.trace import TraceEvent
 from app.tools import CircuitBreaker, DEFAULT_TOOL_WHITELIST, ToolCallGuard, ToolRouter
+from app.tracing import InMemoryTraceManager
 
 class WorkflowState(TypedDict, total=False):
     task_id: str
+    request_id: str | None
+    trace_id: str | None
     session_id: str
     user_query: str
     raw_query: str | None
@@ -63,8 +67,13 @@ def _state_to_mapping(state: DiagnosisState) -> WorkflowState:
 
 
 class DiagnosisWorkflow:
-    def __init__(self, memory: InMemoryMemoryManager | None = None) -> None:
+    def __init__(
+        self,
+        memory: InMemoryMemoryManager | None = None,
+        trace_manager: InMemoryTraceManager | None = None,
+    ) -> None:
         self.memory = memory or get_memory_manager()
+        self.trace_manager = trace_manager or get_trace_manager()
         self.guard = ToolCallGuard(tool_whitelist=DEFAULT_TOOL_WHITELIST)
         self.router = ToolRouter(self.guard)
         self.circuit_breaker = CircuitBreaker()
@@ -72,14 +81,28 @@ class DiagnosisWorkflow:
             router=self.router,
             guard=self.guard,
             memory=self.memory,
+            trace_manager=self.trace_manager,
         )
         self.graph = create_diagnosis_graph(self)
 
     async def run(self, state: DiagnosisState) -> DiagnosisState:
+        self.ensure_trace(state)
         result = await self.graph.ainvoke(_state_to_mapping(state))
         final_state = _state_from_mapping(result)
         await self.memory.save_task(final_state)
         return final_state
+
+    def ensure_trace(self, state: DiagnosisState) -> DiagnosisState:
+        if state.request_id is None:
+            state.request_id = f"req-{uuid4().hex}"
+        if state.trace_id is None:
+            trace = self.trace_manager.start_trace(
+                request_id=state.request_id,
+                session_id=state.session_id,
+                task_id=state.task_id,
+            )
+            state.trace_id = trace.trace_id
+        return state
 
     @classmethod
     def from_request(cls, request: DiagnosisRequest) -> DiagnosisState:
@@ -96,6 +119,7 @@ class DiagnosisWorkflow:
             )
         return DiagnosisState(
             task_id=request.task_id or f"task-{uuid4().hex}",
+            request_id=f"req-{uuid4().hex}",
             session_id=request.session_id,
             raw_query=request.message,
             user_query=sanitized.sanitized_text,
@@ -105,6 +129,23 @@ class DiagnosisWorkflow:
         )
 
     def supervisor_node(self, state: WorkflowState) -> WorkflowState:
+        diagnosis_state = _state_from_mapping(state)
+        self._trace_event(
+            diagnosis_state,
+            "supervisor_started",
+            "supervisor_node",
+            "started",
+            "Supervisor routing started.",
+        )
+        route = self.supervisor_route(state)
+        self._trace_event(
+            diagnosis_state,
+            "supervisor_completed",
+            "supervisor_node",
+            "completed",
+            "Supervisor routing completed.",
+            {"route": route},
+        )
         return state
 
     def supervisor_route(self, state: WorkflowState) -> str:
@@ -121,6 +162,13 @@ class DiagnosisWorkflow:
 
     async def diagnosis_node(self, state: WorkflowState) -> WorkflowState:
         diagnosis_state = _state_from_mapping(state)
+        self._trace_event(
+            diagnosis_state,
+            "diagnosis_started",
+            "diagnosis_node",
+            "started",
+            "Diagnosis node started.",
+        )
         query = diagnosis_state.sanitized_query or diagnosis_state.user_query
         normalized_query = query.upper()
         fault_match = FAULT_CODE_PATTERN.search(normalized_query)
@@ -154,6 +202,18 @@ class DiagnosisWorkflow:
                 "risk_level": diagnosis_state.risk_level,
             }
         )
+        self._trace_event(
+            diagnosis_state,
+            "diagnosis_completed",
+            "diagnosis_node",
+            "completed",
+            "Diagnosis node completed.",
+            {
+                "query_type": diagnosis_state.query_type,
+                "fault_code": diagnosis_state.fault_code,
+                "risk_level": diagnosis_state.risk_level,
+            },
+        )
         await self.memory.save_task(diagnosis_state)
         return _state_to_mapping(diagnosis_state)
 
@@ -167,16 +227,43 @@ class DiagnosisWorkflow:
                 "retrieval_status": diagnosis_state.retrieval_status,
             }
         )
+        self._trace_event(
+            diagnosis_state,
+            "retrieval_completed",
+            "retrieval_node",
+            "completed",
+            "Retrieval node completed.",
+            {
+                "retrieval_status": diagnosis_state.retrieval_status,
+                "retrieval_mode": diagnosis_state.retrieval_mode,
+                "source_count": len(diagnosis_state.source_refs),
+            },
+        )
         await self.memory.save_task(diagnosis_state)
         return _state_to_mapping(diagnosis_state)
 
     async def safety_report_node(self, state: WorkflowState) -> WorkflowState:
         diagnosis_state = _state_from_mapping(state)
+        self._trace_event(
+            diagnosis_state,
+            "safety_review_started",
+            "safety_report_node",
+            "started",
+            "Safety report node started.",
+        )
         if diagnosis_state.risk_level == "high" and (
             not diagnosis_state.safety_rules or not diagnosis_state.source_refs
         ):
             diagnosis_state.handoff_required = True
             diagnosis_state.handoff_reason = "high_risk_without_evidence"
+            self._trace_event(
+                diagnosis_state,
+                "safety_review_completed",
+                "safety_report_node",
+                "handoff_required",
+                "Safety review requires handoff.",
+                {"handoff_reason": diagnosis_state.handoff_reason},
+            )
             await self.memory.save_task(diagnosis_state)
             return _state_to_mapping(diagnosis_state)
 
@@ -210,6 +297,21 @@ class DiagnosisWorkflow:
             f"引用来源: {citations}."
         )
         diagnosis_state.workflow_events.append({"event": "safety_review_completed"})
+        self._trace_event(
+            diagnosis_state,
+            "safety_review_completed",
+            "safety_report_node",
+            "completed",
+            "Safety report node completed.",
+            {"source_count": len(diagnosis_state.source_refs)},
+        )
+        self._trace_event(
+            diagnosis_state,
+            "final_answer_generated",
+            "safety_report_node",
+            "completed",
+            "Final answer generated.",
+        )
         await self.memory.save_task(diagnosis_state)
         return _state_to_mapping(diagnosis_state)
 
@@ -217,6 +319,14 @@ class DiagnosisWorkflow:
         diagnosis_state = _state_from_mapping(state)
         diagnosis_state.handoff_required = True
         diagnosis_state.handoff_reason = "circuit_breaker_retry_limit_reached"
+        self._trace_event(
+            diagnosis_state,
+            "circuit_breaker_triggered",
+            "circuit_breaker_node",
+            "triggered",
+            "Circuit breaker triggered by retry limit.",
+            {"retry_count": diagnosis_state.retry_count},
+        )
         await self.memory.save_task(diagnosis_state)
         return _state_to_mapping(diagnosis_state)
 
@@ -230,6 +340,17 @@ class DiagnosisWorkflow:
         )
         diagnosis_state.handoff_payload = payload.model_dump()
         diagnosis_state.final_answer = f"Human handoff required: {reason}."
+        self._trace_event(
+            diagnosis_state,
+            "handoff_created",
+            "handoff_node",
+            "completed",
+            "Human handoff payload created.",
+            {
+                "handoff_reason": reason,
+                "risk_level": diagnosis_state.risk_level,
+            },
+        )
         await self.memory.append_event(
             diagnosis_state.task_id,
             {
@@ -241,11 +362,40 @@ class DiagnosisWorkflow:
         await self.memory.save_task(diagnosis_state)
         return _state_to_mapping(diagnosis_state)
 
+    def _trace_event(
+        self,
+        state: DiagnosisState,
+        event_type: str,
+        component: str,
+        status: str,
+        message: str,
+        metadata: dict[str, Any] | None = None,
+        latency_ms: float | None = None,
+    ) -> None:
+        if not state.trace_id or not state.request_id:
+            return
+        self.trace_manager.add_event(
+            state.trace_id,
+            TraceEvent(
+                trace_id=state.trace_id,
+                request_id=state.request_id,
+                session_id=state.session_id,
+                task_id=state.task_id,
+                event_type=event_type,
+                component=component,
+                status=status,
+                message=message,
+                metadata=metadata or {},
+                latency_ms=latency_ms,
+            ),
+        )
+
 def create_diagnosis_graph(workflow: DiagnosisWorkflow | None = None):
     owner = workflow
     if owner is None:
         owner = DiagnosisWorkflow.__new__(DiagnosisWorkflow)
         owner.memory = get_memory_manager()
+        owner.trace_manager = get_trace_manager()
         owner.guard = ToolCallGuard(tool_whitelist=DEFAULT_TOOL_WHITELIST)
         owner.router = ToolRouter(owner.guard)
         owner.circuit_breaker = CircuitBreaker()
@@ -253,6 +403,7 @@ def create_diagnosis_graph(workflow: DiagnosisWorkflow | None = None):
             router=owner.router,
             guard=owner.guard,
             memory=owner.memory,
+            trace_manager=owner.trace_manager,
         )
 
     graph = StateGraph(WorkflowState)
