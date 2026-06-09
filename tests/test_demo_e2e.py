@@ -77,7 +77,14 @@ def test_demo_workflow_outputs_final_answer_and_trace() -> None:
     assert "E03" in final_state.final_answer
     assert "温度传感器" in final_state.final_answer
     assert "安全提醒" in final_state.final_answer
+    for section in ("故障识别", "可能原因", "排查步骤", "安全提醒", "引用来源"):
+        assert section in final_state.final_answer
+    assert "Review retrieved manual evidence" not in final_state.final_answer
+    assert "Check the fault code or parameter range against the cited source" not in final_state.final_answer
+    assert "No high-risk operation detected by current tool results" not in final_state.final_answer
+    assert final_state.final_answer.count("E03 表示温度传感器异常") == 1
     assert final_state.source_refs
+    assert len(final_state.source_refs) == len(set(final_state.source_refs))
     assert "a100_manual.md" in final_state.final_answer
     assert final_state.trace_id is not None
 

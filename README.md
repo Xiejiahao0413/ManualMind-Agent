@@ -33,6 +33,7 @@ Run the local end-to-end demo without starting the API server:
 ```
 
 The script indexes `data/demo_manuals/a100_manual.md`, runs an E03 diagnosis through the workflow, and prints `final_answer`, `source_refs`, and `trace_id`.
+`final_answer` is formatted as a Chinese diagnosis report with fault identification, possible causes, troubleshooting steps, safety notices, and source references.
 
 To run the same flow through FastAPI:
 

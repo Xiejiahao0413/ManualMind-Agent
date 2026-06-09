@@ -4,6 +4,7 @@ from uuid import uuid4
 
 from langgraph.graph import END, StateGraph
 
+from app.agents.reporting import build_diagnosis_report
 from app.agents.services import WorkflowToolService
 from app.core.dependencies import get_memory_manager, get_trace_manager
 from app.memory import InMemoryMemoryManager
@@ -267,35 +268,8 @@ class DiagnosisWorkflow:
             await self.memory.save_task(diagnosis_state)
             return _state_to_mapping(diagnosis_state)
 
-        citations = ", ".join(diagnosis_state.source_refs) or "no_source_refs"
-        fault_summary = (
-            diagnosis_state.fault_info.get("description")
-            if diagnosis_state.fault_info
-            else f"fault_code={diagnosis_state.fault_code or 'not_detected'}"
-        )
-        possible_cause = (
-            fault_summary
-            if diagnosis_state.fault_info
-            else "Manual evidence suggests checking device-specific operating conditions."
-        )
-        troubleshooting_steps = (
-            "Review retrieved manual evidence. "
-            "Check the fault code or parameter range against the cited source. "
-            "Record observations before corrective action."
-        )
-        safety_notice = (
-            " ".join(diagnosis_state.safety_rules)
-            if diagnosis_state.safety_rules
-            else "No high-risk operation detected by current tool results."
-        )
-        diagnosis_state.final_answer = (
-            f"故障识别: {fault_summary}. "
-            f"可能原因: {possible_cause}. "
-            f"排查步骤: {troubleshooting_steps} "
-            f"安全提醒: {safety_notice}. "
-            f"参数信息: {diagnosis_state.parameter_info or 'not_applicable'}. "
-            f"引用来源: {citations}."
-        )
+        diagnosis_state.source_refs = sorted(set(diagnosis_state.source_refs))
+        diagnosis_state.final_answer = build_diagnosis_report(diagnosis_state)
         diagnosis_state.workflow_events.append({"event": "safety_review_completed"})
         self._trace_event(
             diagnosis_state,
