@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -17,6 +17,7 @@ class DiagnosisState(BaseModel):
     task_id: str
     session_id: str
     user_query: str
+    sanitized_query: str | None = None
     device_name: str | None = None
     device_model: str | None = None
     fault_code: str | None = None
@@ -24,10 +25,16 @@ class DiagnosisState(BaseModel):
     query_type: str | None = None
     risk_level: Literal["low", "medium", "high", "unknown"] = "unknown"
     retrieval_status: str = "not_started"
+    retrieved_chunks: list[dict[str, Any]] = Field(default_factory=list)
+    source_refs: list[str] = Field(default_factory=list)
     retrieved_evidence: list[RetrievalResult] = Field(default_factory=list)
     tool_call_history: list[ToolCallRecord] = Field(default_factory=list)
     retry_count: int = 0
     max_retry: int = 3
+    handoff_required: bool = False
+    handoff_reason: str | None = None
+    handoff_payload: dict[str, Any] | None = None
+    final_answer: str | None = None
 
 
 class DiagnosisResponse(BaseModel):

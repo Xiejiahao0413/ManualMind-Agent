@@ -1,4 +1,5 @@
 from app.main import app
+from app.agents import DiagnosisWorkflow, create_diagnosis_graph
 from app.memory import (
     CaseMemory,
     InMemoryMemoryManager,
@@ -28,6 +29,8 @@ from app.tools import (
 
 def test_app_imports() -> None:
     assert app.title == "ManualMind-Agent"
+    assert DiagnosisWorkflow
+    assert create_diagnosis_graph
 
 
 def test_schema_imports() -> None:
