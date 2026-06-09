@@ -73,4 +73,21 @@ The retrieval layer now has a testable hybrid retrieval implementation:
 
 BM25 is intended for exact industrial manual signals such as `E03`, model numbers, threshold names, and section headings. Dense retrieval is intended for natural-language symptom descriptions. Reranking is the final evidence ordering step before agent report generation.
 
+## MCP Tool Server Foundation
+
+The MCP server package now exposes a local tool layer that can later be wrapped by a real MCP transport:
+
+- `ToolRegistry` registers tools by name and exposes lookup/list operations.
+- `MCPToolExecutor` is the unified execution entry point. It validates input schemas, catches exceptions, and returns `ToolExecutionResult` with status, data, error type, error message, and latency.
+- Demo-backed tools include `manual_hybrid_search`, `fault_code_lookup`, `parameter_lookup`, `safety_rule_search`, `source_trace`, and `handoff_ticket_create`.
+- `manual_hybrid_search` calls the existing `HybridRetrieverImpl` with demo chunks so tests run without Milvus.
+- Lookup tools return structured not-found data instead of raising for normal misses.
+- `handoff_ticket_create` creates a local structured handoff ticket id and does not call a real ticketing system.
+
+The intended controlled path remains:
+
+`Agent Tool Intent -> Tool Router -> Tool Call Guard -> MCP Tool Executor -> Tool Result Validator -> Memory Manager`
+
+Agents should not bypass the router and guard to invoke MCP tools directly.
+
 Real MCP execution, retrieval backends, LLM calls, and durable memory are still intentionally out of scope.

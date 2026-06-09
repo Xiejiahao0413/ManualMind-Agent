@@ -36,5 +36,6 @@ pytest
 - LangGraph diagnosis workflow skeleton with supervisor, diagnosis, retrieval, safety report, circuit breaker, and handoff nodes.
 - Sensitive Data Guard for regex and dictionary-based masking across input, tool arguments, and SSE streaming output.
 - Hybrid Retrieval layer with local BM25, in-memory dense retrieval, candidate merge/dedup, metadata filters, and mock reranker.
+- MCP Tool Server foundation with tool schemas, registry, executor, and demo-backed retrieval, lookup, safety, source trace, and handoff tools.
 
 Real LLM reasoning, MCP execution, Milvus retrieval, BM25 indexing, BGE reranking, and persistent memory will be implemented in later iterations.
