@@ -1,10 +1,82 @@
 # ManualMind-Agent
 
-ManualMind-Agent is a production-style multi-agent fault diagnosis system for complex equipment manuals.
+A production-style multi-agent fault diagnosis system for complex equipment manuals.
 
-This repository currently contains the first engineering skeleton only. It defines the FastAPI entrypoint, core schemas, memory interfaces, tool routing guard interfaces, retrieval abstractions, and basic import tests.
+ManualMind-Agent is a Python/FastAPI engineering project for diagnosing industrial equipment faults from manuals, fault code tables, maintenance instructions, safety rules, and historical cases. It is designed as more than a simple RAG demo: the project emphasizes controlled tool calling, hybrid retrieval, streaming safety filtering, traceability, retry/fallback handling, circuit breakers, and human handoff.
 
-## Setup
+## Highlights
+
+- LangGraph supervisor-worker multi-agent workflow.
+- MCP-style tool execution layer with registry, executor, schemas, and structured errors.
+- BM25 + dense vector + rerank hybrid retrieval pipeline.
+- Sensitive data guard for input, tool arguments, document ingestion, and SSE output.
+- Tool Router / Tool Call Guard / Retry / Fallback / Circuit Breaker control layer.
+- Human handoff payload generation for unsafe or unresolved cases.
+- Trace & Evaluation layer for workflow events, tool calls, retrieval quality, fallback, and handoff decisions.
+- FastAPI API layer with SSE streaming diagnosis responses.
+- Runnable end-to-end demo using an A100 air compressor manual and E03 fault code.
+
+## Architecture
+
+```mermaid
+flowchart TD
+    Client[Client / Demo Script] --> API[FastAPI Stateless API]
+    API --> Guard[Sensitive Data Guard]
+    Guard --> StreamGuard[SSE Streaming Output Guard]
+    Guard --> Graph[LangGraph Multi-Agent Workflow]
+
+    Graph --> Supervisor[Supervisor Node]
+    Supervisor --> Diagnosis[Diagnosis Node]
+    Supervisor --> Retrieval[Retrieval Node]
+    Supervisor --> Safety[Safety Report Node]
+    Supervisor --> Breaker[Circuit Breaker Node]
+    Supervisor --> Handoff[Handoff Node]
+
+    Retrieval --> Router[Tool Router]
+    Router --> ToolGuard[Tool Call Guard]
+    ToolGuard --> Retry[Retry & Fallback Manager]
+    Retry --> Executor[MCP Tool Executor]
+    Executor --> Tools[MCP Tool Server]
+    Tools --> Hybrid[Hybrid Retrieval]
+
+    Hybrid --> BM25[BM25 Sparse Retrieval]
+    Hybrid --> Dense[In-Memory Dense / Milvus Interface]
+    Hybrid --> Rerank[BGE-Rerank Interface]
+
+    Graph --> Memory[Memory Manager]
+    Executor --> Memory
+    Graph --> Trace[Trace Manager]
+    Trace --> Eval[Evaluation Runner]
+```
+
+## End-To-End Flow
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant API as FastAPI
+    participant Ingestion as ManualIndexer
+    participant Workflow as LangGraph Workflow
+    participant Tool as Tool Control Layer
+    participant MCP as MCP Tool Executor
+    participant Retrieval as Hybrid Retriever
+    participant Trace as Trace Manager
+
+    User->>API: Upload demo manual
+    API->>Ingestion: Parse, sanitize, split, build chunks
+    Ingestion->>Retrieval: Add chunks to BM25 + dense indexes
+    User->>API: POST /api/diagnosis/chat
+    API->>Workflow: Create DiagnosisState
+    Workflow->>Tool: Route and guard tool calls
+    Tool->>MCP: Execute manual_hybrid_search / fault_code_lookup
+    MCP->>Retrieval: Search indexed manual chunks
+    Retrieval-->>Workflow: Evidence + source_refs
+    Workflow->>Trace: Record nodes and tool events
+    Workflow-->>API: Structured final_answer
+    API-->>User: SSE events with trace_id
+```
+
+## Quick Start
 
 ```powershell
 python -m venv .venv
@@ -12,34 +84,69 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-## Run
-
-```powershell
-uvicorn app.main:app --reload
-```
-
-## Test
-
-```powershell
-pytest
-```
-
-## Demo
-
-Run the local end-to-end demo without starting the API server:
+Run the local demo without starting the API server:
 
 ```powershell
 .\.venv\Scripts\python.exe scripts\demo_run.py
 ```
 
-The script indexes `data/demo_manuals/a100_manual.md`, runs an E03 diagnosis through the workflow, and prints `final_answer`, `source_refs`, and `trace_id`.
-`final_answer` is formatted as a Chinese diagnosis report with fault identification, possible causes, troubleshooting steps, safety notices, and source references.
-
-To run the same flow through FastAPI:
+Start FastAPI:
 
 ```powershell
 uvicorn app.main:app --reload
 ```
+
+Run tests:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest
+```
+
+Expected test result:
+
+```text
+71 passed, 1 warning
+```
+
+The warning is from the FastAPI/TestClient `httpx` deprecation path and does not affect the current demo.
+
+## Demo Output
+
+`scripts/demo_run.py` indexes `data/demo_manuals/a100_manual.md`, runs an E03 diagnosis, and prints the trace id, source references, and final report.
+
+```text
+indexed_doc_id: demo-a100-manual
+chunks_count: 5
+trace_id: trace-<generated>
+source_refs: ['a100_manual.md', 'a100_manual.md:1']
+final_answer:
+故障识别：
+E03 表示温度传感器异常。控制器检测到温度传感器信号超出正常范围，可能导致温度读数不稳定、保护停机或过热报警
+
+可能原因：
+- 温度传感器接线松动或端子氧化
+- 温度传感器探头损坏
+- 冷却风扇堵塞导致局部温度异常
+- 控制器采样通道异常
+
+排查步骤：
+1. 先断电并等待设备冷却
+2. 检查温度传感器插头、线束和端子
+3. 清理冷却风道和风扇滤网
+4. 复位后观察 E03 是否再次出现
+5. 如 E03 持续出现，更换温度传感器并记录维修结果
+
+安全提醒：
+- 处理 E03 前必须断电、等待冷却，禁止带压拆卸温度传感器
+
+引用来源：
+- a100_manual.md
+- a100_manual.md:1
+```
+
+See [docs/demo.md](docs/demo.md) for a longer walkthrough.
+
+## API Examples
 
 Upload the demo manual:
 
@@ -64,28 +171,49 @@ curl.exe -N -X POST http://127.0.0.1:8000/api/diagnosis/chat `
   -d "{\"session_id\":\"demo-session\",\"message\":\"空压机 A100 报 E03，应该如何排查？\"}"
 ```
 
-Query trace events with the returned `trace_id`:
+Query trace events:
 
 ```powershell
 curl.exe http://127.0.0.1:8000/api/trace/<trace_id>/events
 ```
 
+## Project Structure
+
+```text
+app/
+  agents/        LangGraph workflow, tool-service integration, report formatter
+  api/           FastAPI routers for manual, diagnosis, trace, eval, health
+  core/          Config, dependencies, SSE helpers
+  evaluation/    Evaluation schemas and runner
+  ingestion/     Manual parsing, splitting, metadata, in-memory indexing
+  mcp_server/    MCP-style tool schemas, registry, executor, tool implementations
+  memory/        Memory interfaces and in-memory implementation
+  retrieval/     BM25, dense retriever interface, hybrid search, reranker
+  schemas/       Pydantic schemas for diagnosis, tools, retrieval, traces, documents
+  security/      Sensitive data detector, sanitizer, streaming output guard
+  tools/         Tool router, guard, retry/fallback, validator, circuit breaker
+  tracing/       In-memory trace manager
+data/
+  demo_manuals/  A100 demo equipment manual
+docs/
+  architecture.md
+  demo.md
+  interview_notes.md
+scripts/
+  demo_run.py
+tests/
+```
+
 ## Current Scope
 
-- FastAPI app entrypoint.
-- Health, manual, and diagnosis API routers.
-- SSE-capable diagnosis chat endpoint.
-- Typed Pydantic schemas.
-- Abstract memory interfaces.
-- In-memory Memory Manager for session, task, tool, safety, and case memory.
-- Tool router, tool call guard, retry/fallback manager, result validator, and circuit breaker control logic.
-- LangGraph diagnosis workflow skeleton with supervisor, diagnosis, retrieval, safety report, circuit breaker, and handoff nodes.
-- Sensitive Data Guard for regex and dictionary-based masking across input, tool arguments, and SSE streaming output.
-- Hybrid Retrieval layer with local BM25, in-memory dense retrieval, candidate merge/dedup, metadata filters, and mock reranker.
-- MCP Tool Server foundation with tool schemas, registry, executor, and demo-backed retrieval, lookup, safety, source trace, and handoff tools.
-- Workflow-to-MCP integration through Tool Router, Tool Call Guard, MCP Tool Executor, Tool Result Validator, and Memory Manager.
-- Trace and Evaluation layer for workflow observability, tool/retrieval/fallback/handoff traces, and basic regression metrics.
-- Document ingestion and knowledge base indexing for txt/md manuals, including parsing, sensitive data masking, structured chunking, metadata construction, and in-memory Hybrid Retrieval indexing.
-- End-to-end demo data and script for indexing an A100 air compressor manual, diagnosing E03, streaming SSE events, and inspecting trace output.
+This repository currently uses in-memory components so the full demo can run locally without external services. Real LLM calls, real Milvus deployment, production BGE rerank model loading, PDF/OCR parsing, and durable memory are intentionally left for later iterations.
 
-Real LLM reasoning, remote MCP execution, real Milvus services, production BGE reranking, PDF/OCR parsing, and persistent memory will be implemented in later iterations.
+## Roadmap
+
+- Add real Milvus persistence and collection management.
+- Add production BGE embedding and rerank implementations.
+- Add PDF parsing and OCR adapters for scanned manuals.
+- Add a real MCP transport layer around the local tool server.
+- Add durable memory backends for session, task, tool, safety, and case memory.
+- Expand evaluation datasets and regression metrics.
+- Add authentication and tenant-aware access control for production API usage.
