@@ -2,9 +2,13 @@
 
 A production-style multi-agent fault diagnosis system for complex equipment manuals.
 
+## Overview / 项目概述
+
 ManualMind-Agent is a Python/FastAPI engineering project for diagnosing industrial equipment faults from manuals, fault code tables, maintenance instructions, safety rules, and historical cases. It is designed as more than a simple RAG demo: the project emphasizes controlled tool calling, hybrid retrieval, streaming safety filtering, traceability, retry/fallback handling, circuit breakers, and human handoff.
 
-## Highlights
+中文说明：ManualMind-Agent 面向复杂设备手册和工业故障诊断场景，目标不是做一个简单的“文档问答 RAG”，而是搭建一个具备工程控制能力的多 Agent 系统。它覆盖文档入库、混合检索、受控工具调用、安全脱敏、SSE 流式输出、Trace 追踪、评测闭环和人工接管，适合作为 Agent 工程化项目展示。
+
+## Core Features / 核心功能
 
 - LangGraph supervisor-worker multi-agent workflow.
 - MCP-style tool execution layer with registry, executor, schemas, and structured errors.
@@ -16,7 +20,9 @@ ManualMind-Agent is a Python/FastAPI engineering project for diagnosing industri
 - FastAPI API layer with SSE streaming diagnosis responses.
 - Runnable end-to-end demo using an A100 air compressor manual and E03 fault code.
 
-## Architecture
+中文说明：核心设计重点是“可控”和“可追踪”。Agent 不直接调用工具，而是通过 Tool Router、Tool Call Guard、Retry/Fallback 和 MCP Tool Executor 完成受控调用；检索层同时支持故障码等精确匹配和语义检索；高风险或证据不足时可以触发人工接管；Trace 和 Evaluation 用于排查链路问题和做回归评测。
+
+## Architecture / 系统架构
 
 ```mermaid
 flowchart TD
@@ -49,6 +55,8 @@ flowchart TD
     Trace --> Eval[Evaluation Runner]
 ```
 
+中文说明：FastAPI 层保持 stateless，任务状态、工具调用记录、安全审计和 Trace 都由独立 Manager 管理。LangGraph 负责多 Agent 状态流转，Retrieval Node 只能通过 Tool Control Layer 调用 MCP 工具，MCP 工具再访问 Hybrid Retrieval。这样可以避免 Agent 绕过工具控制层，也便于后续替换真实 Milvus、BGE-rerank 或远程 MCP Server。
+
 ## End-To-End Flow
 
 ```mermaid
@@ -76,13 +84,15 @@ sequenceDiagram
     API-->>User: SSE events with trace_id
 ```
 
-## Quick Start
+## Quick Start / 快速开始
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\activate
 pip install -r requirements.txt
 ```
+
+中文说明：当前 demo 不依赖真实 LLM、真实 Milvus 或外部服务，安装依赖后即可在本地运行。
 
 Run the local demo without starting the API server:
 
@@ -110,9 +120,11 @@ Expected test result:
 
 The warning is from the FastAPI/TestClient `httpx` deprecation path and does not affect the current demo.
 
-## Demo Output
+## Demo / 示例演示
 
 `scripts/demo_run.py` indexes `data/demo_manuals/a100_manual.md`, runs an E03 diagnosis, and prints the trace id, source references, and final report.
+
+中文说明：示例手册是“空压机 A100”设备手册，其中包含故障码 `E03`、温度传感器异常说明、可能原因、排查步骤、安全提醒和维护周期。运行 demo 后，可以看到从文档入库、检索、工具调用、报告生成到 Trace 输出的完整链路。
 
 ```text
 indexed_doc_id: demo-a100-manual
@@ -204,9 +216,11 @@ scripts/
 tests/
 ```
 
-## Current Scope
+## Current Scope / 当前范围
 
 This repository currently uses in-memory components so the full demo can run locally without external services. Real LLM calls, real Milvus deployment, production BGE rerank model loading, PDF/OCR parsing, and durable memory are intentionally left for later iterations.
+
+该仓库目前采用内存型组件，使完整 demo 可以在本地直接运行，而不依赖外部服务。真实 LLM 调用、真实 Milvus 部署、生产级 BGE rerank 模型加载、PDF/OCR 解析以及持久化记忆等能力，被设计为生产化扩展点，便于后续替换和接入。
 
 ## Roadmap
 
