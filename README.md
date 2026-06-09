@@ -112,10 +112,16 @@ Run tests:
 .\.venv\Scripts\python.exe -m pytest
 ```
 
+Run the evaluation sets:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\run_eval.py --all
+```
+
 Expected test result:
 
 ```text
-71 passed, 1 warning
+91 passed, 1 warning
 ```
 
 The warning is from the FastAPI/TestClient `httpx` deprecation path and does not affect the current demo.
@@ -157,6 +163,12 @@ E03 表示温度传感器异常。控制器检测到温度传感器信号超出�
 ```
 
 See [docs/demo.md](docs/demo.md) for a longer walkthrough.
+
+## Evaluation Samples / 评测样本
+
+The repository includes `data/eval_samples/equipment_fault_eval_50.json`, a 50-sample standard evaluation set for the A100 demo manual. It also includes `data/eval_samples/equipment_fault_adversarial_30.json`, a 30-sample adversarial and boundary evaluation set.
+
+中文说明：标准 50 条样本覆盖故障码识别、故障现象诊断、参数查询、安全规范和人工接管五类问题；对抗/边界 30 条样本覆盖缺少设备型号、故障码格式变体、未知故障码、提示词注入、安全绕过、敏感信息混入和高风险维修等场景。Evaluation Runner 会输出 category 和 scenario_type 两个维度的分类统计。
 
 ## API Examples
 

@@ -150,6 +150,26 @@ def test_evaluation_runner_calculates_fault_code_accuracy() -> None:
     assert response.fault_code_accuracy == 1.0
 
 
+def test_evaluation_runner_detects_workflow_handoff_required() -> None:
+    runner = EvaluationRunner(trace_manager=InMemoryTraceManager())
+    response = asyncio.run(
+        runner.run_eval(
+            [
+                EvalSample(
+                    sample_id="handoff-detected",
+                    query="\u8bbe\u5907\u8fd8\u5728\u5e26\u538b\u8fd0\u884c\uff0c\u53ef\u4ee5\u76f4\u63a5\u62c6\u6e29\u5ea6\u4f20\u611f\u5668\u5417\uff1f",
+                    expected_tool_names=["safety_rule_search", "handoff_risk_check"],
+                    expected_handoff=True,
+                    scenario_type="high_risk",
+                )
+            ]
+        )
+    )
+
+    assert response.handoff_accuracy == 1.0
+    assert response.results[0].handoff_required is True
+
+
 def test_eval_api_returns_metrics() -> None:
     client = TestClient(app)
     response = client.post(

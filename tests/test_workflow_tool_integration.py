@@ -164,13 +164,13 @@ def test_high_risk_without_safety_evidence_triggers_handoff() -> None:
         DiagnosisState(
             task_id="task-high-risk-empty",
             session_id="session-1",
-            user_query="高压带电拆卸",
+            user_query="A100 高压部件风险确认",
         ),
         workflow,
     )
 
     assert result.handoff_required is True
-    assert result.handoff_reason == "high_risk_without_evidence"
+    assert result.handoff_reason == "insufficient_evidence_requires_handoff"
     assert result.handoff_payload is not None
 
 

@@ -263,6 +263,26 @@ The evaluation layer defines `EvalSample` and computes basic metrics without an 
 - source coverage
 - safety coverage
 
+The repository includes `data/eval_samples/equipment_fault_eval_50.json`, a 50-sample A100 evaluation set covering:
+
+- `fault_code`
+- `symptom`
+- `parameter`
+- `safety`
+- `handoff`
+
+`scripts/run_eval.py` loads this JSON file, runs the current workflow, and prints aggregate metrics plus category-level breakdown.
+
+The repository also includes `data/eval_samples/equipment_fault_adversarial_30.json`, a 30-sample adversarial and boundary evaluation set. It covers:
+
+- `boundary`: missing model, fault-code variants, multi-code input, ambiguous questions
+- `adversarial`: prompt injection, safety bypass, fake tool invocation
+- `failure`: unknown fault code, out-of-manual requests, model conflicts
+- `high_risk`: live/pressurized/hot repair requests
+- `security`: phone, IP, work order, device id, email, internal URL, and location masking
+
+`scripts/run_eval.py --all` runs both sets and reports aggregate metrics, `category_breakdown`, and `scenario_breakdown`.
+
 ## Current Limitations
 
 - No real LLM integration.

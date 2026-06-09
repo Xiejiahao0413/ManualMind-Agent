@@ -100,3 +100,30 @@ Useful trace events include:
 - `final_answer_generated`
 
 These events show how the diagnosis moved through the multi-agent workflow and controlled tool layer.
+
+## Evaluation Demo
+
+The project also includes a 50-sample evaluation set:
+
+```text
+data/eval_samples/equipment_fault_eval_50.json
+data/eval_samples/equipment_fault_adversarial_30.json
+```
+
+Run all evaluation samples with:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\run_eval.py --all
+```
+
+The sample set covers:
+
+- fault code questions
+- symptom-based questions
+- parameter lookup questions
+- safety rule questions
+- human handoff questions
+
+The output includes tool selection accuracy, fault code accuracy, source coverage, safety coverage, handoff accuracy, and category-level breakdown.
+
+The adversarial and boundary set adds scenario-level coverage for missing device model, fault-code variants, unknown faults, prompt injection, fake tool calls, safety bypass attempts, high-risk repair requests, and sensitive data masking.

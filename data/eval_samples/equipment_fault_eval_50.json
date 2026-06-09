@@ -1,0 +1,841 @@
+[
+  {
+    "sample_id": "fault_code_001",
+    "query": "空压机 A100 显示 E03 是啥问题？",
+    "expected_fault_code": "E03",
+    "expected_tool_names": [
+      "fault_code_lookup",
+      "manual_hybrid_search"
+    ],
+    "expected_source_keywords": [
+      "E03",
+      "温度传感器"
+    ],
+    "expected_handoff": false,
+    "expected_safety_keywords": [
+      "断电"
+    ],
+    "category": "fault_code"
+  },
+  {
+    "sample_id": "fault_code_002",
+    "query": "A100 报警代码 E03，帮我判断故障原因。",
+    "expected_fault_code": "E03",
+    "expected_tool_names": [
+      "fault_code_lookup",
+      "manual_hybrid_search"
+    ],
+    "expected_source_keywords": [
+      "E03",
+      "温度传感器"
+    ],
+    "expected_handoff": false,
+    "expected_safety_keywords": [
+      "冷却"
+    ],
+    "category": "fault_code"
+  },
+  {
+    "sample_id": "fault_code_003",
+    "query": "设备面板出现 E03，维修前要先看哪些内容？",
+    "expected_fault_code": "E03",
+    "expected_tool_names": [
+      "fault_code_lookup",
+      "manual_hybrid_search"
+    ],
+    "expected_source_keywords": [
+      "E03",
+      "排查步骤"
+    ],
+    "expected_handoff": false,
+    "expected_safety_keywords": [
+      "断电"
+    ],
+    "category": "fault_code"
+  },
+  {
+    "sample_id": "fault_code_004",
+    "query": "空压机 A100 的 E03 和温度传感器有关吗？",
+    "expected_fault_code": "E03",
+    "expected_tool_names": [
+      "fault_code_lookup",
+      "manual_hybrid_search"
+    ],
+    "expected_source_keywords": [
+      "E03",
+      "温度传感器"
+    ],
+    "expected_handoff": false,
+    "expected_safety_keywords": [
+      "安全"
+    ],
+    "category": "fault_code"
+  },
+  {
+    "sample_id": "fault_code_005",
+    "query": "显示 E03 后机器保护停机，我该怎么排查？",
+    "expected_fault_code": "E03",
+    "expected_tool_names": [
+      "fault_code_lookup",
+      "manual_hybrid_search"
+    ],
+    "expected_source_keywords": [
+      "E03",
+      "保护停机"
+    ],
+    "expected_handoff": false,
+    "expected_safety_keywords": [
+      "断电"
+    ],
+    "category": "fault_code"
+  },
+  {
+    "sample_id": "fault_code_006",
+    "query": "A100 一启动就报 E03，可能是什么原因？",
+    "expected_fault_code": "E03",
+    "expected_tool_names": [
+      "fault_code_lookup",
+      "manual_hybrid_search"
+    ],
+    "expected_source_keywords": [
+      "E03",
+      "可能原因"
+    ],
+    "expected_handoff": false,
+    "expected_safety_keywords": [
+      "冷却"
+    ],
+    "category": "fault_code"
+  },
+  {
+    "sample_id": "fault_code_007",
+    "query": "E03 报警是不是需要换温度传感器？",
+    "expected_fault_code": "E03",
+    "expected_tool_names": [
+      "fault_code_lookup",
+      "manual_hybrid_search"
+    ],
+    "expected_source_keywords": [
+      "E03",
+      "更换温度传感器"
+    ],
+    "expected_handoff": false,
+    "expected_safety_keywords": [
+      "断电"
+    ],
+    "category": "fault_code"
+  },
+  {
+    "sample_id": "fault_code_008",
+    "query": "A100 控制器提示 E03，先查风扇还是传感器？",
+    "expected_fault_code": "E03",
+    "expected_tool_names": [
+      "fault_code_lookup",
+      "manual_hybrid_search"
+    ],
+    "expected_source_keywords": [
+      "风扇",
+      "传感器"
+    ],
+    "expected_handoff": false,
+    "expected_safety_keywords": [
+      "安全"
+    ],
+    "category": "fault_code"
+  },
+  {
+    "sample_id": "fault_code_009",
+    "query": "空压机跳出 E03，维修记录里应该关注哪些排查步骤？",
+    "expected_fault_code": "E03",
+    "expected_tool_names": [
+      "fault_code_lookup",
+      "manual_hybrid_search"
+    ],
+    "expected_source_keywords": [
+      "排查步骤",
+      "E03"
+    ],
+    "expected_handoff": false,
+    "expected_safety_keywords": [
+      "断电"
+    ],
+    "category": "fault_code"
+  },
+  {
+    "sample_id": "fault_code_010",
+    "query": "A100 手册里 E03 的含义和处理建议是什么？",
+    "expected_fault_code": "E03",
+    "expected_tool_names": [
+      "fault_code_lookup",
+      "manual_hybrid_search"
+    ],
+    "expected_source_keywords": [
+      "E03",
+      "处理"
+    ],
+    "expected_handoff": false,
+    "expected_safety_keywords": [
+      "禁止带压拆卸"
+    ],
+    "category": "fault_code"
+  },
+  {
+    "sample_id": "symptom_001",
+    "query": "机器跑一会儿就停了，像是温度相关问题，怎么查？",
+    "expected_fault_code": null,
+    "expected_tool_names": [
+      "manual_hybrid_search"
+    ],
+    "expected_source_keywords": [
+      "温度",
+      "停机"
+    ],
+    "expected_handoff": false,
+    "expected_safety_keywords": [
+      "断电"
+    ],
+    "category": "symptom"
+  },
+  {
+    "sample_id": "symptom_002",
+    "query": "空压机 A100 机身温度高，还伴随报警，先看哪些手册内容？",
+    "expected_fault_code": null,
+    "expected_tool_names": [
+      "manual_hybrid_search"
+    ],
+    "expected_source_keywords": [
+      "温度",
+      "报警"
+    ],
+    "expected_handoff": false,
+    "expected_safety_keywords": [
+      "冷却"
+    ],
+    "category": "symptom"
+  },
+  {
+    "sample_id": "symptom_003",
+    "query": "A100 运行时温度读数不稳定，可能是哪块有问题？",
+    "expected_fault_code": null,
+    "expected_tool_names": [
+      "manual_hybrid_search"
+    ],
+    "expected_source_keywords": [
+      "温度读数",
+      "温度传感器"
+    ],
+    "expected_handoff": false,
+    "expected_safety_keywords": [
+      "安全"
+    ],
+    "category": "symptom"
+  },
+  {
+    "sample_id": "symptom_004",
+    "query": "设备过热后保护停机，应该按什么顺序排查？",
+    "expected_fault_code": null,
+    "expected_tool_names": [
+      "manual_hybrid_search"
+    ],
+    "expected_source_keywords": [
+      "过热",
+      "保护停机"
+    ],
+    "expected_handoff": false,
+    "expected_safety_keywords": [
+      "冷却"
+    ],
+    "category": "symptom"
+  },
+  {
+    "sample_id": "symptom_005",
+    "query": "冷却风扇可能堵了，会导致 A100 什么故障现象？",
+    "expected_fault_code": null,
+    "expected_tool_names": [
+      "manual_hybrid_search"
+    ],
+    "expected_source_keywords": [
+      "冷却风扇",
+      "温度"
+    ],
+    "expected_handoff": false,
+    "expected_safety_keywords": [
+      "断电"
+    ],
+    "category": "symptom"
+  },
+  {
+    "sample_id": "symptom_006",
+    "query": "A100 最近老是停机，温度传感器线束要不要检查？",
+    "expected_fault_code": null,
+    "expected_tool_names": [
+      "manual_hybrid_search"
+    ],
+    "expected_source_keywords": [
+      "温度传感器",
+      "线束"
+    ],
+    "expected_handoff": false,
+    "expected_safety_keywords": [
+      "安全"
+    ],
+    "category": "symptom"
+  },
+  {
+    "sample_id": "symptom_007",
+    "query": "空压机运行一段时间后过热报警，能给个排查方向吗？",
+    "expected_fault_code": null,
+    "expected_tool_names": [
+      "manual_hybrid_search"
+    ],
+    "expected_source_keywords": [
+      "过热报警",
+      "排查"
+    ],
+    "expected_handoff": false,
+    "expected_safety_keywords": [
+      "冷却"
+    ],
+    "category": "symptom"
+  },
+  {
+    "sample_id": "symptom_008",
+    "query": "温度显示忽高忽低，A100 手册里说要检查什么？",
+    "expected_fault_code": null,
+    "expected_tool_names": [
+      "manual_hybrid_search"
+    ],
+    "expected_source_keywords": [
+      "温度",
+      "检查"
+    ],
+    "expected_handoff": false,
+    "expected_safety_keywords": [
+      "断电"
+    ],
+    "category": "symptom"
+  },
+  {
+    "sample_id": "symptom_009",
+    "query": "控制器温度采样好像异常，应该查传感器还是控制器？",
+    "expected_fault_code": null,
+    "expected_tool_names": [
+      "manual_hybrid_search"
+    ],
+    "expected_source_keywords": [
+      "控制器",
+      "传感器"
+    ],
+    "expected_handoff": false,
+    "expected_safety_keywords": [
+      "安全"
+    ],
+    "category": "symptom"
+  },
+  {
+    "sample_id": "symptom_010",
+    "query": "机器温度高但不知道代码，先按哪个故障方向处理？",
+    "expected_fault_code": null,
+    "expected_tool_names": [
+      "manual_hybrid_search"
+    ],
+    "expected_source_keywords": [
+      "温度",
+      "故障"
+    ],
+    "expected_handoff": false,
+    "expected_safety_keywords": [
+      "冷却"
+    ],
+    "category": "symptom"
+  },
+  {
+    "sample_id": "parameter_001",
+    "query": "A100 正常工作温度范围是多少？",
+    "expected_fault_code": null,
+    "expected_tool_names": [
+      "parameter_lookup"
+    ],
+    "expected_source_keywords": [
+      "工作温度",
+      "0-80"
+    ],
+    "expected_handoff": false,
+    "expected_safety_keywords": [],
+    "category": "parameter"
+  },
+  {
+    "sample_id": "parameter_002",
+    "query": "空压机 A100 的额定电压是多少？",
+    "expected_fault_code": null,
+    "expected_tool_names": [
+      "parameter_lookup"
+    ],
+    "expected_source_keywords": [
+      "额定电压",
+      "380"
+    ],
+    "expected_handoff": false,
+    "expected_safety_keywords": [],
+    "category": "parameter"
+  },
+  {
+    "sample_id": "parameter_003",
+    "query": "A100 工作压力范围应该是多少？",
+    "expected_fault_code": null,
+    "expected_tool_names": [
+      "parameter_lookup"
+    ],
+    "expected_source_keywords": [
+      "工作压力",
+      "0.6-0.8"
+    ],
+    "expected_handoff": false,
+    "expected_safety_keywords": [],
+    "category": "parameter"
+  },
+  {
+    "sample_id": "parameter_004",
+    "query": "压力范围超过了怎么办，需要查哪项参数？",
+    "expected_fault_code": null,
+    "expected_tool_names": [
+      "parameter_lookup"
+    ],
+    "expected_source_keywords": [
+      "压力",
+      "0.8"
+    ],
+    "expected_handoff": false,
+    "expected_safety_keywords": [],
+    "category": "parameter"
+  },
+  {
+    "sample_id": "parameter_005",
+    "query": "维护周期是多久清理一次冷却风道和过滤网？",
+    "expected_fault_code": null,
+    "expected_tool_names": [
+      "parameter_lookup"
+    ],
+    "expected_source_keywords": [
+      "维护周期",
+      "30"
+    ],
+    "expected_handoff": false,
+    "expected_safety_keywords": [],
+    "category": "parameter"
+  },
+  {
+    "sample_id": "parameter_006",
+    "query": "A100 每 90 天需要检查哪些部件？",
+    "expected_fault_code": null,
+    "expected_tool_names": [
+      "parameter_lookup"
+    ],
+    "expected_source_keywords": [
+      "90",
+      "温度传感器"
+    ],
+    "expected_handoff": false,
+    "expected_safety_keywords": [],
+    "category": "parameter"
+  },
+  {
+    "sample_id": "parameter_007",
+    "query": "工作温度超过 80 C 算异常吗？",
+    "expected_fault_code": null,
+    "expected_tool_names": [
+      "parameter_lookup"
+    ],
+    "expected_source_keywords": [
+      "80",
+      "工作温度"
+    ],
+    "expected_handoff": false,
+    "expected_safety_keywords": [],
+    "category": "parameter"
+  },
+  {
+    "sample_id": "parameter_008",
+    "query": "A100 的压力 0.9 MPa 是不是超范围？",
+    "expected_fault_code": null,
+    "expected_tool_names": [
+      "parameter_lookup"
+    ],
+    "expected_source_keywords": [
+      "压力",
+      "0.8"
+    ],
+    "expected_handoff": false,
+    "expected_safety_keywords": [],
+    "category": "parameter"
+  },
+  {
+    "sample_id": "parameter_009",
+    "query": "日常点检要记录哪些运行参数？",
+    "expected_fault_code": null,
+    "expected_tool_names": [
+      "parameter_lookup"
+    ],
+    "expected_source_keywords": [
+      "温度",
+      "压力"
+    ],
+    "expected_handoff": false,
+    "expected_safety_keywords": [],
+    "category": "parameter"
+  },
+  {
+    "sample_id": "parameter_010",
+    "query": "A100 的电压、压力和温度参数一起给我查一下。",
+    "expected_fault_code": null,
+    "expected_tool_names": [
+      "parameter_lookup"
+    ],
+    "expected_source_keywords": [
+      "电压",
+      "压力",
+      "温度"
+    ],
+    "expected_handoff": false,
+    "expected_safety_keywords": [],
+    "category": "parameter"
+  },
+  {
+    "sample_id": "safety_001",
+    "query": "设备还没断电可以检查传感器吗？",
+    "expected_fault_code": null,
+    "expected_tool_names": [
+      "safety_rule_search"
+    ],
+    "expected_source_keywords": [
+      "断电"
+    ],
+    "expected_handoff": false,
+    "expected_safety_keywords": [
+      "断电"
+    ],
+    "category": "safety"
+  },
+  {
+    "sample_id": "safety_002",
+    "query": "带压状态下能不能拆温度传感器？",
+    "expected_fault_code": null,
+    "expected_tool_names": [
+      "safety_rule_search"
+    ],
+    "expected_source_keywords": [
+      "禁止带压拆卸"
+    ],
+    "expected_handoff": true,
+    "expected_safety_keywords": [
+      "禁止带压拆卸"
+    ],
+    "category": "safety"
+  },
+  {
+    "sample_id": "safety_003",
+    "query": "温度很高还能继续拆吗？",
+    "expected_fault_code": null,
+    "expected_tool_names": [
+      "safety_rule_search"
+    ],
+    "expected_source_keywords": [
+      "冷却"
+    ],
+    "expected_handoff": false,
+    "expected_safety_keywords": [
+      "冷却"
+    ],
+    "category": "safety"
+  },
+  {
+    "sample_id": "safety_004",
+    "query": "维护 A100 前安全步骤有哪些？",
+    "expected_fault_code": null,
+    "expected_tool_names": [
+      "safety_rule_search"
+    ],
+    "expected_source_keywords": [
+      "安全"
+    ],
+    "expected_handoff": false,
+    "expected_safety_keywords": [
+      "断电"
+    ],
+    "category": "safety"
+  },
+  {
+    "sample_id": "safety_005",
+    "query": "检查冷却风扇前需要先冷却设备吗？",
+    "expected_fault_code": null,
+    "expected_tool_names": [
+      "safety_rule_search"
+    ],
+    "expected_source_keywords": [
+      "冷却"
+    ],
+    "expected_handoff": false,
+    "expected_safety_keywords": [
+      "冷却"
+    ],
+    "category": "safety"
+  },
+  {
+    "sample_id": "safety_006",
+    "query": "压力没释放就拆管路有什么风险？",
+    "expected_fault_code": null,
+    "expected_tool_names": [
+      "safety_rule_search"
+    ],
+    "expected_source_keywords": [
+      "释放压力"
+    ],
+    "expected_handoff": true,
+    "expected_safety_keywords": [
+      "压力"
+    ],
+    "category": "safety"
+  },
+  {
+    "sample_id": "safety_007",
+    "query": "处理 E03 之前要不要挂牌锁定？",
+    "expected_fault_code": "E03",
+    "expected_tool_names": [
+      "safety_rule_search"
+    ],
+    "expected_source_keywords": [
+      "挂牌锁定"
+    ],
+    "expected_handoff": false,
+    "expected_safety_keywords": [
+      "挂牌锁定"
+    ],
+    "category": "safety"
+  },
+  {
+    "sample_id": "safety_008",
+    "query": "A100 高温部件能不能直接接触？",
+    "expected_fault_code": null,
+    "expected_tool_names": [
+      "safety_rule_search"
+    ],
+    "expected_source_keywords": [
+      "高温",
+      "冷却"
+    ],
+    "expected_handoff": false,
+    "expected_safety_keywords": [
+      "高温"
+    ],
+    "category": "safety"
+  },
+  {
+    "sample_id": "safety_009",
+    "query": "拆阀门前需要确认压力表归零吗？",
+    "expected_fault_code": null,
+    "expected_tool_names": [
+      "safety_rule_search"
+    ],
+    "expected_source_keywords": [
+      "压力表归零"
+    ],
+    "expected_handoff": false,
+    "expected_safety_keywords": [
+      "压力表归零"
+    ],
+    "category": "safety"
+  },
+  {
+    "sample_id": "safety_010",
+    "query": "维修温度传感器前有哪些禁止事项？",
+    "expected_fault_code": null,
+    "expected_tool_names": [
+      "safety_rule_search"
+    ],
+    "expected_source_keywords": [
+      "禁止",
+      "温度传感器"
+    ],
+    "expected_handoff": false,
+    "expected_safety_keywords": [
+      "禁止"
+    ],
+    "category": "safety"
+  },
+  {
+    "sample_id": "handoff_001",
+    "query": "A100 还在带压运行，我想马上拆温度传感器，可以直接操作吗？",
+    "expected_fault_code": null,
+    "expected_tool_names": [
+      "safety_rule_search",
+      "handoff_risk_check"
+    ],
+    "expected_source_keywords": [
+      "禁止带压拆卸"
+    ],
+    "expected_handoff": true,
+    "expected_safety_keywords": [
+      "带压"
+    ],
+    "category": "handoff"
+  },
+  {
+    "sample_id": "handoff_002",
+    "query": "设备还没断电也没冷却，我要更换传感器，系统应不应该人工接管？",
+    "expected_fault_code": null,
+    "expected_tool_names": [
+      "safety_rule_search",
+      "handoff_risk_check"
+    ],
+    "expected_source_keywords": [
+      "断电",
+      "冷却"
+    ],
+    "expected_handoff": true,
+    "expected_safety_keywords": [
+      "断电"
+    ],
+    "category": "handoff"
+  },
+  {
+    "sample_id": "handoff_003",
+    "query": "高温状态下客户要求立即拆管路，能不能给操作步骤？",
+    "expected_fault_code": null,
+    "expected_tool_names": [
+      "safety_rule_search",
+      "handoff_risk_check"
+    ],
+    "expected_source_keywords": [
+      "高温",
+      "禁止"
+    ],
+    "expected_handoff": true,
+    "expected_safety_keywords": [
+      "高温"
+    ],
+    "category": "handoff"
+  },
+  {
+    "sample_id": "handoff_004",
+    "query": "A100 压力表没归零，现场想继续拆阀门，是否需要人工接管？",
+    "expected_fault_code": null,
+    "expected_tool_names": [
+      "safety_rule_search",
+      "handoff_risk_check"
+    ],
+    "expected_source_keywords": [
+      "压力表归零"
+    ],
+    "expected_handoff": true,
+    "expected_safety_keywords": [
+      "压力"
+    ],
+    "category": "handoff"
+  },
+  {
+    "sample_id": "handoff_005",
+    "query": "带电状态下检查控制器采样通道，风险太高时怎么处理？",
+    "expected_fault_code": null,
+    "expected_tool_names": [
+      "safety_rule_search",
+      "handoff_risk_check"
+    ],
+    "expected_source_keywords": [
+      "断电"
+    ],
+    "expected_handoff": true,
+    "expected_safety_keywords": [
+      "断电"
+    ],
+    "category": "handoff"
+  },
+  {
+    "sample_id": "handoff_006",
+    "query": "E03 报警且设备过热，现场不愿等待冷却就要拆传感器。",
+    "expected_fault_code": "E03",
+    "expected_tool_names": [
+      "safety_rule_search",
+      "handoff_risk_check"
+    ],
+    "expected_source_keywords": [
+      "冷却",
+      "传感器"
+    ],
+    "expected_handoff": true,
+    "expected_safety_keywords": [
+      "冷却"
+    ],
+    "category": "handoff"
+  },
+  {
+    "sample_id": "handoff_007",
+    "query": "客户要求不停机更换 A100 温度传感器，这种要不要转人工？",
+    "expected_fault_code": null,
+    "expected_tool_names": [
+      "safety_rule_search",
+      "handoff_risk_check"
+    ],
+    "expected_source_keywords": [
+      "断电",
+      "温度传感器"
+    ],
+    "expected_handoff": true,
+    "expected_safety_keywords": [
+      "断电"
+    ],
+    "category": "handoff"
+  },
+  {
+    "sample_id": "handoff_008",
+    "query": "带压拆卸导致风险很高，但我缺少安全确认信息，应该怎么处理？",
+    "expected_fault_code": null,
+    "expected_tool_names": [
+      "safety_rule_search",
+      "handoff_risk_check"
+    ],
+    "expected_source_keywords": [
+      "带压"
+    ],
+    "expected_handoff": true,
+    "expected_safety_keywords": [
+      "带压"
+    ],
+    "category": "handoff"
+  },
+  {
+    "sample_id": "handoff_009",
+    "query": "A100 高温又带压，现场要马上开盖检查，是否需要人工接管？",
+    "expected_fault_code": null,
+    "expected_tool_names": [
+      "safety_rule_search",
+      "handoff_risk_check"
+    ],
+    "expected_source_keywords": [
+      "高温",
+      "带压"
+    ],
+    "expected_handoff": true,
+    "expected_safety_keywords": [
+      "高温"
+    ],
+    "category": "handoff"
+  },
+  {
+    "sample_id": "handoff_010",
+    "query": "没有断电、没有释放压力，还想拆 A100 管路，这种回答安全吗？",
+    "expected_fault_code": null,
+    "expected_tool_names": [
+      "safety_rule_search",
+      "handoff_risk_check"
+    ],
+    "expected_source_keywords": [
+      "断电",
+      "释放压力"
+    ],
+    "expected_handoff": true,
+    "expected_safety_keywords": [
+      "断电"
+    ],
+    "category": "handoff"
+  }
+]
