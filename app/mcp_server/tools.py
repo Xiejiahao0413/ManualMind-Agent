@@ -1,5 +1,6 @@
 from uuid import uuid4
 
+from app.core.dependencies import get_manual_indexer
 from app.mcp_server.registry import MCPTool, ToolRegistry
 from app.mcp_server.schemas import (
     FaultCodeLookupRequest,
@@ -90,6 +91,18 @@ def build_demo_hybrid_retriever() -> HybridRetrieverImpl:
     return retriever
 
 
+def get_indexed_chunks() -> list[DocumentChunk]:
+    return get_manual_indexer().list_chunks()
+
+
+def get_searchable_chunks() -> list[DocumentChunk]:
+    return [*get_indexed_chunks(), *DEMO_CHUNKS]
+
+
+def matches_device_model(chunk: DocumentChunk, device_model: str | None) -> bool:
+    return not device_model or chunk.device_model == device_model
+
+
 async def manual_hybrid_search(arguments: dict) -> ManualHybridSearchResponse:
     request = ManualHybridSearchRequest.model_validate(arguments)
     metadata_filter: dict[str, object] = {}
@@ -100,13 +113,23 @@ async def manual_hybrid_search(arguments: dict) -> ManualHybridSearchResponse:
     if request.content_types:
         metadata_filter["content_type"] = request.content_types
 
-    results = await build_demo_hybrid_retriever().search(
+    indexer = get_manual_indexer()
+    retriever = indexer.retriever if indexer.has_chunks() else build_demo_hybrid_retriever()
+    results = await retriever.search(
         request.query,
         metadata_filter=metadata_filter or None,
         top_k_bm25=request.top_k_bm25,
         top_k_dense=request.top_k_dense,
         top_n_rerank=request.top_n_rerank,
     )
+    if not results and indexer.has_chunks():
+        results = await build_demo_hybrid_retriever().search(
+            request.query,
+            metadata_filter=metadata_filter or None,
+            top_k_bm25=request.top_k_bm25,
+            top_k_dense=request.top_k_dense,
+            top_n_rerank=request.top_n_rerank,
+        )
     source_refs = sorted({source for result in results for source in result.source_refs})
     return ManualHybridSearchResponse(results=results, source_refs=source_refs)
 
@@ -114,10 +137,10 @@ async def manual_hybrid_search(arguments: dict) -> ManualHybridSearchResponse:
 async def fault_code_lookup(arguments: dict) -> FaultCodeLookupResponse:
     request = FaultCodeLookupRequest.model_validate(arguments)
     fault_code = request.fault_code.upper()
-    for chunk in DEMO_CHUNKS:
+    for chunk in get_searchable_chunks():
         if chunk.fault_code != fault_code:
             continue
-        if request.device_model and chunk.device_model != request.device_model:
+        if not matches_device_model(chunk, request.device_model):
             continue
         return FaultCodeLookupResponse(
             status="found",
@@ -136,6 +159,32 @@ async def fault_code_lookup(arguments: dict) -> FaultCodeLookupResponse:
 async def parameter_lookup(arguments: dict) -> ParameterLookupResponse:
     request = ParameterLookupRequest.model_validate(arguments)
     key = request.parameter_name.lower()
+    for chunk in get_indexed_chunks():
+        if chunk.content_type != "parameter":
+            continue
+        if not matches_device_model(chunk, request.device_model):
+            continue
+        parameter_name = str(chunk.metadata.get("parameter_name") or request.parameter_name)
+        if key not in chunk.text.lower() and key not in parameter_name.lower():
+            continue
+        if request.observed_value is not None and (
+            chunk.metadata.get("min") is None or chunk.metadata.get("max") is None
+        ):
+            continue
+        is_abnormal = None
+        if request.observed_value is not None:
+            is_abnormal = not (
+                float(chunk.metadata["min"]) <= request.observed_value <= float(chunk.metadata["max"])
+            )
+        return ParameterLookupResponse(
+            status="found",
+            parameter_name=request.parameter_name,
+            standard_range=chunk.text,
+            observed_value=request.observed_value,
+            is_abnormal=is_abnormal,
+            source_refs=[f"{chunk.source_file}:{chunk.page}"] if chunk.source_file else [],
+        )
+
     data = PARAMETER_DATA.get(key) or PARAMETER_DATA.get(request.parameter_name)
     if data is None:
         return ParameterLookupResponse(status="not_found", parameter_name=request.parameter_name)
@@ -158,10 +207,10 @@ async def safety_rule_search(arguments: dict) -> SafetyRuleSearchResponse:
     request = SafetyRuleSearchRequest.model_validate(arguments)
     rules: list[str] = []
     source_refs: list[str] = []
-    for chunk in DEMO_CHUNKS:
+    for chunk in get_searchable_chunks():
         if chunk.content_type != "safety_rule":
             continue
-        if request.device_model and chunk.device_model != request.device_model:
+        if not matches_device_model(chunk, request.device_model):
             continue
         if request.risk_level == "high" or "拆卸" in request.operation or "高压" in request.operation:
             rules.append(chunk.text)
@@ -186,7 +235,7 @@ async def source_trace(arguments: dict) -> SourceTraceResponse:
             section_title=chunk.section_title,
             content_type=chunk.content_type,
         )
-        for chunk in DEMO_CHUNKS
+        for chunk in get_searchable_chunks()
         if chunk.chunk_id in requested_ids
     ]
     return SourceTraceResponse(sources=sources)

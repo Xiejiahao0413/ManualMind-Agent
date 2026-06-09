@@ -39,5 +39,6 @@ pytest
 - MCP Tool Server foundation with tool schemas, registry, executor, and demo-backed retrieval, lookup, safety, source trace, and handoff tools.
 - Workflow-to-MCP integration through Tool Router, Tool Call Guard, MCP Tool Executor, Tool Result Validator, and Memory Manager.
 - Trace and Evaluation layer for workflow observability, tool/retrieval/fallback/handoff traces, and basic regression metrics.
+- Document ingestion and knowledge base indexing for txt/md manuals, including parsing, sensitive data masking, structured chunking, metadata construction, and in-memory Hybrid Retrieval indexing.
 
-Real LLM reasoning, MCP execution, Milvus retrieval, BM25 indexing, BGE reranking, and persistent memory will be implemented in later iterations.
+Real LLM reasoning, remote MCP execution, real Milvus services, production BGE reranking, PDF/OCR parsing, and persistent memory will be implemented in later iterations.

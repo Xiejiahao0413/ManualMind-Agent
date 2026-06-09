@@ -24,7 +24,10 @@ from app.schemas import (
     DiagnosisResponse,
     DiagnosisState,
     DocumentChunk,
+    DocumentIndexResult,
     HandoffPayload,
+    ManualDocument,
+    ManualUploadResult,
     RetrievalResult,
     ToolCallRecord,
 )
@@ -49,7 +52,10 @@ def test_schema_imports() -> None:
     assert DiagnosisResponse
     assert DiagnosisState
     assert DocumentChunk
+    assert DocumentIndexResult
     assert HandoffPayload
+    assert ManualDocument
+    assert ManualUploadResult
     assert RetrievalResult
     assert ToolCallRecord
 

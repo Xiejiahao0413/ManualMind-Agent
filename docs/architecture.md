@@ -135,3 +135,24 @@ The evaluation layer defines `EvalSample` and computes basic metrics without an 
 `POST /api/eval/run` runs samples through the current workflow and uses workflow outputs plus trace events to produce aggregate metrics and per-sample results.
 
 Real MCP execution, retrieval backends, LLM calls, and durable memory are still intentionally out of scope.
+
+## Document Ingestion And Knowledge Base Indexing
+
+The ingestion layer provides the first runnable manual indexing path:
+
+`Manual Upload -> Parser -> Sensitive Data Guard -> Section Splitter -> Chunk Metadata Builder -> ManualIndexer -> Hybrid Retrieval`
+
+`POST /api/manual/upload` stores uploaded manual bytes in an in-memory manual store and returns a `doc_id`. `POST /api/manual/index` reads that stored manual, parses txt/md content, masks sensitive values, splits the manual into structured chunks, builds standard retrieval metadata, and adds chunks to the shared in-memory Hybrid Retriever.
+
+The parser currently supports txt and Markdown-style text files. `PDFManualParser` is defined as an interface placeholder for a later PDF/OCR pass.
+
+Chunking is explicit Python logic:
+
+- fault code chunks are detected with patterns such as `E03`, `F12`, and `P001`.
+- parameter chunks are detected by terms such as temperature, voltage, pressure, threshold, and maintenance cycle.
+- safety rule chunks are detected by terms such as disconnect power, high temperature, pressurized work, prohibition, warning, and safety.
+- maintenance and general chunks fill the remaining manual sections.
+
+Each chunk carries `chunk_id`, `doc_id`, `device_name`, `device_model`, `section_title`, `page`, `content_type`, `fault_code`, `source_file`, `text`, and metadata. `chunk_id` is generated from stable document and content fields so repeated indexing of the same chunk does not duplicate it in the in-memory retriever.
+
+MCP `manual_hybrid_search`, `fault_code_lookup`, `parameter_lookup`, `safety_rule_search`, and `source_trace` now prefer indexed manual chunks while keeping demo data as a fallback for tests and early development.
