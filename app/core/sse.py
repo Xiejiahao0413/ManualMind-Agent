@@ -32,11 +32,10 @@ async def diagnosis_event_stream(request: DiagnosisRequest) -> AsyncIterator[str
         )
 
     async for chunk in emit(
-        "diagnosis_started",
+        "input_sanitized",
         {
             "session_id": request.session_id,
             "task_id": state.task_id,
-            "message": "Diagnosis request accepted.",
             "sanitized_query": state.sanitized_query,
             "sensitive_detected": bool(state.sanitized_fields),
             "sanitized_fields": state.sanitized_fields,
@@ -44,29 +43,20 @@ async def diagnosis_event_stream(request: DiagnosisRequest) -> AsyncIterator[str
     ):
         yield chunk
 
-    async for chunk in emit(
-        "retrieval_started",
-        {
-            "task_id": state.task_id,
-            "message": "Tool-routed mock retrieval stage started.",
-            "sensitive_detected": bool(state.sanitized_fields),
-            "sanitized_fields": state.sanitized_fields,
-        },
-    ):
-        yield chunk
-
-    async for chunk in emit(
-        "safety_review_started",
-        {
-            "task_id": state.task_id,
-            "message": "Safety review and report stage started.",
-            "sensitive_detected": bool(state.sanitized_fields),
-            "sanitized_fields": state.sanitized_fields,
-        },
-    ):
-        yield chunk
-
     final_state = await workflow.run(state)
+    for workflow_event in final_state.workflow_events:
+        event_name = str(workflow_event.get("event", "workflow_event"))
+        async for chunk in emit(
+            event_name,
+            {
+                "task_id": final_state.task_id,
+                **workflow_event,
+                "sensitive_detected": bool(final_state.sanitized_fields),
+                "sanitized_fields": final_state.sanitized_fields,
+            },
+        ):
+            yield chunk
+
     if final_state.handoff_required:
         async for chunk in emit(
             "handoff_required",

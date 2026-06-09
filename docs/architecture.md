@@ -90,4 +90,25 @@ The intended controlled path remains:
 
 Agents should not bypass the router and guard to invoke MCP tools directly.
 
+## Workflow Tool Integration
+
+The LangGraph retrieval node now calls tools through `WorkflowToolService` instead of writing mock retrieval results directly. The service owns the controlled execution path:
+
+`Retrieval Agent -> Tool Router -> Tool Call Guard -> MCP Tool Executor -> Tool Result Validator -> Memory Manager -> DiagnosisState`
+
+The retrieval node provides state context such as `query_type`, `fault_code`, `risk_level`, and device fields. `ToolRouter` selects candidate tools, `ToolCallGuard` checks whitelist, argument requirements, sensitive parameters, retry limits, duplicate signatures, and per-task tool budgets, then `MCPToolExecutor` executes registered tools.
+
+Every tool attempt writes a `ToolCallRecord` to Tool Memory, including status, retry count, fallback usage, error type, latency, and summary. Successful duplicate signatures use the guard's cached-success path and avoid repeated MCP execution.
+
+Executor and validation failures are passed through `RetryFallbackManager`. Fallback decisions are written to `DiagnosisState` as `fallback_decision` and `retrieval_mode`; handoff or circuit-breaker decisions set `handoff_required` and flow into the existing handoff node.
+
+Tool outputs are written back into dedicated state fields:
+
+- `manual_hybrid_search` -> `retrieved_chunks`, `retrieved_evidence`, `source_refs`, `retrieval_mode`
+- `fault_code_lookup` -> `fault_info`, `source_refs`
+- `parameter_lookup` -> `parameter_info`, `source_refs`
+- `safety_rule_search` -> `safety_rules`, `source_refs`
+
+SSE output now reports coarse workflow stages: `input_sanitized`, `diagnosis_completed`, `tool_routing_started`, `tool_call_completed`, `retrieval_completed`, `safety_review_completed`, and terminal `final_answer` or `handoff_required` events.
+
 Real MCP execution, retrieval backends, LLM calls, and durable memory are still intentionally out of scope.

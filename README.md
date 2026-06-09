@@ -37,5 +37,6 @@ pytest
 - Sensitive Data Guard for regex and dictionary-based masking across input, tool arguments, and SSE streaming output.
 - Hybrid Retrieval layer with local BM25, in-memory dense retrieval, candidate merge/dedup, metadata filters, and mock reranker.
 - MCP Tool Server foundation with tool schemas, registry, executor, and demo-backed retrieval, lookup, safety, source trace, and handoff tools.
+- Workflow-to-MCP integration through Tool Router, Tool Call Guard, MCP Tool Executor, Tool Result Validator, and Memory Manager.
 
 Real LLM reasoning, MCP execution, Milvus retrieval, BM25 indexing, BGE reranking, and persistent memory will be implemented in later iterations.

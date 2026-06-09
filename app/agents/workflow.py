@@ -4,13 +4,12 @@ from uuid import uuid4
 
 from langgraph.graph import END, StateGraph
 
+from app.agents.services import WorkflowToolService
 from app.core.dependencies import get_memory_manager
 from app.memory import InMemoryMemoryManager
 from app.security import sanitize_text
 from app.schemas.diagnosis import DiagnosisRequest, DiagnosisState
-from app.schemas.retrieval import RetrievalResult
-from app.schemas.tools import ToolCallRecord
-from app.tools import CircuitBreaker, DEFAULT_TOOL_WHITELIST, ToolCallGuard, ToolIntent, ToolRouter
+from app.tools import CircuitBreaker, DEFAULT_TOOL_WHITELIST, ToolCallGuard, ToolRouter
 
 class WorkflowState(TypedDict, total=False):
     task_id: str
@@ -27,9 +26,15 @@ class WorkflowState(TypedDict, total=False):
     query_type: str | None
     risk_level: str
     retrieval_status: str
+    retrieval_mode: str | None
     retrieved_chunks: list[dict[str, Any]]
     source_refs: list[str]
     retrieved_evidence: list[dict[str, Any]]
+    fault_info: dict[str, Any] | None
+    parameter_info: dict[str, Any] | None
+    safety_rules: list[str]
+    fallback_decision: str | None
+    workflow_events: list[dict[str, Any]]
     tool_call_history: list[dict[str, Any]]
     retry_count: int
     max_retry: int
@@ -42,6 +47,11 @@ class WorkflowState(TypedDict, total=False):
 FAULT_CODE_PATTERN = re.compile(r"(?<![A-Z0-9])([EFP]\d{2,3})(?![A-Z0-9])", re.IGNORECASE)
 HIGH_RISK_KEYWORDS = ("高压", "带电", "带压", "拆卸", "更换", "过热")
 PARAMETER_KEYWORDS = ("温度", "电压", "压力", "阈值", "维护周期")
+
+
+HIGH_RISK_KEYWORDS = HIGH_RISK_KEYWORDS + ("高压", "带电", "带压", "拆卸", "更换", "过热")
+PARAMETER_KEYWORDS = PARAMETER_KEYWORDS + ("温度", "电压", "压力", "阈值", "维护周期")
+PARAMETER_KEYWORDS = PARAMETER_KEYWORDS + ("temperature", "voltage", "pressure", "threshold", "maintenance")
 
 
 def _state_from_mapping(state: WorkflowState) -> DiagnosisState:
@@ -58,6 +68,11 @@ class DiagnosisWorkflow:
         self.guard = ToolCallGuard(tool_whitelist=DEFAULT_TOOL_WHITELIST)
         self.router = ToolRouter(self.guard)
         self.circuit_breaker = CircuitBreaker()
+        self.tool_service = WorkflowToolService(
+            router=self.router,
+            guard=self.guard,
+            memory=self.memory,
+        )
         self.graph = create_diagnosis_graph(self)
 
     async def run(self, state: DiagnosisState) -> DiagnosisState:
@@ -100,7 +115,7 @@ class DiagnosisWorkflow:
             return "handoff"
         if not diagnosis_state.query_type:
             return "diagnosis"
-        if not diagnosis_state.retrieved_chunks:
+        if diagnosis_state.retrieval_status == "not_started":
             return "retrieval"
         return "safety_report"
 
@@ -131,99 +146,70 @@ class DiagnosisWorkflow:
             diagnosis_state.query_type = "general_fault_symptom"
 
         diagnosis_state.sanitized_query = query
+        diagnosis_state.workflow_events.append(
+            {
+                "event": "diagnosis_completed",
+                "query_type": diagnosis_state.query_type,
+                "fault_code": diagnosis_state.fault_code,
+                "risk_level": diagnosis_state.risk_level,
+            }
+        )
         await self.memory.save_task(diagnosis_state)
         return _state_to_mapping(diagnosis_state)
 
     async def retrieval_node(self, state: WorkflowState) -> WorkflowState:
         diagnosis_state = _state_from_mapping(state)
-        query_type = diagnosis_state.query_type or "general_fault_symptom"
-        tool_names = self.router.route_query_type(query_type)
-        chunks: list[dict[str, Any]] = []
-        source_refs: list[str] = []
-        evidence: list[RetrievalResult] = []
-
-        for tool_name in tool_names:
-            intent = ToolIntent(
-                tool_name=tool_name,
-                args={
-                    "query": diagnosis_state.sanitized_query or diagnosis_state.user_query,
-                    "fault_code": diagnosis_state.fault_code,
-                },
-                required_args={"query"},
-            )
-            decision = self.router.validate_intent(
-                intent,
-                retry_count=diagnosis_state.retry_count,
-                task_tool_call_count=len(diagnosis_state.tool_call_history),
-            )
-            if not decision.args_signature:
-                diagnosis_state.handoff_required = (
-                    decision.status == "circuit_breaker_required"
-                    or decision.reason == "sanitized_required"
-                )
-                diagnosis_state.handoff_reason = decision.reason if diagnosis_state.handoff_required else None
-                continue
-
-            record = ToolCallRecord(
-                task_id=diagnosis_state.task_id,
-                tool_name=tool_name,
-                args=intent.args,
-                args_signature=decision.args_signature,
-                status="success" if decision.allowed else "skipped",
-                retry_count=diagnosis_state.retry_count,
-                result_summary=decision.reason,
-            )
-            diagnosis_state.tool_call_history.append(record)
-            await self.memory.append_tool_call(record)
-            if decision.allowed:
-                self.guard.remember_success(record)
-
-            if not decision.allowed:
-                continue
-
-            chunk = self._mock_chunk_for_tool(tool_name, diagnosis_state)
-            chunks.append(chunk)
-            source_refs.append(str(chunk["source_ref"]))
-            evidence.append(
-                RetrievalResult(
-                    chunk_id=str(chunk["chunk_id"]),
-                    doc_id=str(chunk["doc_id"]),
-                    text=str(chunk["text"]),
-                    score=float(chunk["score"]),
-                    source_file=str(chunk["source_ref"]),
-                    fault_code=diagnosis_state.fault_code,
-                    content_type=str(chunk["content_type"]),
-                )
-            )
-
-        diagnosis_state.retrieved_chunks = chunks
-        diagnosis_state.source_refs = source_refs
-        diagnosis_state.retrieved_evidence = evidence
-        diagnosis_state.retrieval_status = "completed" if chunks else "empty"
+        diagnosis_state.workflow_events.append({"event": "tool_routing_started"})
+        diagnosis_state = await self.tool_service.run_retrieval_tools(diagnosis_state)
+        diagnosis_state.workflow_events.append(
+            {
+                "event": "retrieval_completed",
+                "retrieval_status": diagnosis_state.retrieval_status,
+            }
+        )
         await self.memory.save_task(diagnosis_state)
         return _state_to_mapping(diagnosis_state)
 
     async def safety_report_node(self, state: WorkflowState) -> WorkflowState:
         diagnosis_state = _state_from_mapping(state)
-        has_safety_evidence = any(
-            bool(chunk.get("safety_evidence")) for chunk in diagnosis_state.retrieved_chunks
-        )
-        if diagnosis_state.risk_level == "high" and not has_safety_evidence:
+        if diagnosis_state.risk_level == "high" and (
+            not diagnosis_state.safety_rules or not diagnosis_state.source_refs
+        ):
             diagnosis_state.handoff_required = True
             diagnosis_state.handoff_reason = "high_risk_without_evidence"
             await self.memory.save_task(diagnosis_state)
             return _state_to_mapping(diagnosis_state)
 
         citations = ", ".join(diagnosis_state.source_refs) or "no_source_refs"
-        safety_notice = "High-risk operation detected. Follow safety procedures before action." if (
-            diagnosis_state.risk_level == "high"
-        ) else "No high-risk operation detected in this mock workflow."
-        diagnosis_state.final_answer = (
-            f"Diagnosis summary: query_type={diagnosis_state.query_type}; "
-            f"fault_code={diagnosis_state.fault_code or 'not_detected'}; "
-            f"risk_level={diagnosis_state.risk_level}. "
-            f"{safety_notice} Sources: {citations}."
+        fault_summary = (
+            diagnosis_state.fault_info.get("description")
+            if diagnosis_state.fault_info
+            else f"fault_code={diagnosis_state.fault_code or 'not_detected'}"
         )
+        possible_cause = (
+            fault_summary
+            if diagnosis_state.fault_info
+            else "Manual evidence suggests checking device-specific operating conditions."
+        )
+        troubleshooting_steps = (
+            "Review retrieved manual evidence. "
+            "Check the fault code or parameter range against the cited source. "
+            "Record observations before corrective action."
+        )
+        safety_notice = (
+            " ".join(diagnosis_state.safety_rules)
+            if diagnosis_state.safety_rules
+            else "No high-risk operation detected by current tool results."
+        )
+        diagnosis_state.final_answer = (
+            f"故障识别: {fault_summary}. "
+            f"可能原因: {possible_cause}. "
+            f"排查步骤: {troubleshooting_steps} "
+            f"安全提醒: {safety_notice}. "
+            f"参数信息: {diagnosis_state.parameter_info or 'not_applicable'}. "
+            f"引用来源: {citations}."
+        )
+        diagnosis_state.workflow_events.append({"event": "safety_review_completed"})
         await self.memory.save_task(diagnosis_state)
         return _state_to_mapping(diagnosis_state)
 
@@ -255,23 +241,6 @@ class DiagnosisWorkflow:
         await self.memory.save_task(diagnosis_state)
         return _state_to_mapping(diagnosis_state)
 
-    def _mock_chunk_for_tool(
-        self,
-        tool_name: str,
-        state: DiagnosisState,
-    ) -> dict[str, str | float | bool | None]:
-        safety_evidence = tool_name == "safety_rule_search"
-        return {
-            "chunk_id": f"mock-{tool_name}-{state.fault_code or 'general'}",
-            "doc_id": "mock-manual",
-            "text": f"Mock evidence from {tool_name} for {state.user_query}",
-            "score": 0.85,
-            "source_ref": f"mock_manual::{tool_name}",
-            "content_type": "safety_rule" if safety_evidence else "manual_chunk",
-            "safety_evidence": safety_evidence,
-        }
-
-
 def create_diagnosis_graph(workflow: DiagnosisWorkflow | None = None):
     owner = workflow
     if owner is None:
@@ -280,6 +249,11 @@ def create_diagnosis_graph(workflow: DiagnosisWorkflow | None = None):
         owner.guard = ToolCallGuard(tool_whitelist=DEFAULT_TOOL_WHITELIST)
         owner.router = ToolRouter(owner.guard)
         owner.circuit_breaker = CircuitBreaker()
+        owner.tool_service = WorkflowToolService(
+            router=owner.router,
+            guard=owner.guard,
+            memory=owner.memory,
+        )
 
     graph = StateGraph(WorkflowState)
     graph.add_node("supervisor_node", owner.supervisor_node)

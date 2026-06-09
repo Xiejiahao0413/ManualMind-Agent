@@ -28,9 +28,15 @@ class DiagnosisState(BaseModel):
     query_type: str | None = None
     risk_level: Literal["low", "medium", "high", "unknown"] = "unknown"
     retrieval_status: str = "not_started"
+    retrieval_mode: str | None = None
     retrieved_chunks: list[dict[str, Any]] = Field(default_factory=list)
     source_refs: list[str] = Field(default_factory=list)
     retrieved_evidence: list[RetrievalResult] = Field(default_factory=list)
+    fault_info: dict[str, Any] | None = None
+    parameter_info: dict[str, Any] | None = None
+    safety_rules: list[str] = Field(default_factory=list)
+    fallback_decision: str | None = None
+    workflow_events: list[dict[str, Any]] = Field(default_factory=list)
     tool_call_history: list[ToolCallRecord] = Field(default_factory=list)
     retry_count: int = 0
     max_retry: int = 3
