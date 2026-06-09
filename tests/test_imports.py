@@ -1,5 +1,12 @@
 from app.main import app
-from app.memory import CaseMemory, SafetyMemory, SessionMemory, TaskMemory, ToolMemory
+from app.memory import (
+    CaseMemory,
+    InMemoryMemoryManager,
+    SafetyMemory,
+    SessionMemory,
+    TaskMemory,
+    ToolMemory,
+)
 from app.retrieval import BGEReranker, BM25Retriever, HybridRetriever, MilvusDenseRetriever
 from app.schemas import (
     DiagnosisRequest,
@@ -9,7 +16,14 @@ from app.schemas import (
     RetrievalResult,
     ToolCallRecord,
 )
-from app.tools import ToolCallGuard, ToolIntent, ToolRouter
+from app.tools import (
+    CircuitBreaker,
+    RetryFallbackManager,
+    ToolCallGuard,
+    ToolIntent,
+    ToolResultValidator,
+    ToolRouter,
+)
 
 
 def test_app_imports() -> None:
@@ -31,10 +45,14 @@ def test_interface_imports() -> None:
     assert ToolMemory
     assert SafetyMemory
     assert CaseMemory
+    assert InMemoryMemoryManager
     assert BM25Retriever
     assert MilvusDenseRetriever
     assert HybridRetriever
     assert BGEReranker
+    assert RetryFallbackManager
+    assert ToolResultValidator
+    assert CircuitBreaker
 
 
 def test_tool_guard_duplicate_signature() -> None:

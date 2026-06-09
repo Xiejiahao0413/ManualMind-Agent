@@ -34,14 +34,30 @@ class ToolMemory(ABC):
     async def append_tool_call(self, record: ToolCallRecord) -> None:
         raise NotImplementedError
 
+    @abstractmethod
+    async def get_tool_call_by_signature(
+        self,
+        task_id: str,
+        args_signature: str,
+    ) -> ToolCallRecord | None:
+        raise NotImplementedError
+
 
 class SafetyMemory(ABC):
+    @abstractmethod
+    async def list_events(self, task_id: str) -> list[dict[str, Any]]:
+        raise NotImplementedError
+
     @abstractmethod
     async def append_event(self, task_id: str, event: dict[str, Any]) -> None:
         raise NotImplementedError
 
 
 class CaseMemory(ABC):
+    @abstractmethod
+    async def append_case(self, case: dict[str, Any]) -> None:
+        raise NotImplementedError
+
     @abstractmethod
     async def search_cases(self, query: str, top_k: int = 5) -> list[dict[str, Any]]:
         raise NotImplementedError

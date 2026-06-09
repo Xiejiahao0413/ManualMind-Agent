@@ -13,4 +13,7 @@ class ToolCallRecord(BaseModel):
     retry_count: int = 0
     fallback_used: bool = False
     error: str | None = None
+    error_type: str | None = None
+    latency_ms: float | None = None
+    result_summary: str | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

@@ -31,7 +31,8 @@ pytest
 - SSE-capable diagnosis chat endpoint.
 - Typed Pydantic schemas.
 - Abstract memory interfaces.
-- Tool router and tool call guard skeleton.
+- In-memory Memory Manager for session, task, tool, safety, and case memory.
+- Tool router, tool call guard, retry/fallback manager, result validator, and circuit breaker control logic.
 - Retrieval and reranker abstractions.
 
 Real LangGraph workflows, MCP execution, Milvus retrieval, BM25 indexing, BGE reranking, and persistent memory will be implemented in later iterations.
