@@ -17,7 +17,10 @@ class DiagnosisState(BaseModel):
     task_id: str
     session_id: str
     user_query: str
+    raw_query: str | None = None
     sanitized_query: str | None = None
+    sanitized_fields: list[str] = Field(default_factory=list)
+    security_events: list[dict[str, Any]] = Field(default_factory=list)
     device_name: str | None = None
     device_model: str | None = None
     fault_code: str | None = None

@@ -3,6 +3,7 @@ import json
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+from app.security import SensitiveDataDetector
 from app.schemas.tools import ToolCallRecord
 
 ToolGuardStatus = Literal["allowed", "reuse_cached", "blocked", "circuit_breaker_required"]
@@ -24,6 +25,7 @@ class ToolCallGuard:
     max_tool_calls_per_task: int = 8
     called_signatures: set[str] = field(default_factory=set)
     successful_records: dict[str, ToolCallRecord] = field(default_factory=dict)
+    sensitive_detector: SensitiveDataDetector = field(default_factory=SensitiveDataDetector)
 
     def build_args_signature(self, tool_name: str, args: dict[str, Any]) -> str:
         normalized = json.dumps(args, sort_keys=True, separators=(",", ":"), default=str)
@@ -44,6 +46,9 @@ class ToolCallGuard:
         missing_args = sorted((required_args or set()) - set(args.keys()))
         if missing_args:
             return ToolGuardDecision(False, f"missing_required_args:{','.join(missing_args)}")
+
+        if self._contains_unsanitized_sensitive_data(args):
+            return ToolGuardDecision(False, "sanitized_required", status="blocked")
 
         if task_tool_call_count >= self.max_tool_calls_per_task:
             return ToolGuardDecision(
@@ -82,3 +87,12 @@ class ToolCallGuard:
     def remember_success(self, record: ToolCallRecord) -> None:
         self.called_signatures.add(record.args_signature)
         self.successful_records[record.args_signature] = record
+
+    def _contains_unsanitized_sensitive_data(self, value: Any) -> bool:
+        if isinstance(value, str):
+            return bool(self.sensitive_detector.detect(value))
+        if isinstance(value, dict):
+            return any(self._contains_unsanitized_sensitive_data(item) for item in value.values())
+        if isinstance(value, list | tuple | set):
+            return any(self._contains_unsanitized_sensitive_data(item) for item in value)
+        return False

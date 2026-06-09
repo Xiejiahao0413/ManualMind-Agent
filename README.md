@@ -34,6 +34,7 @@ pytest
 - In-memory Memory Manager for session, task, tool, safety, and case memory.
 - Tool router, tool call guard, retry/fallback manager, result validator, and circuit breaker control logic.
 - LangGraph diagnosis workflow skeleton with supervisor, diagnosis, retrieval, safety report, circuit breaker, and handoff nodes.
+- Sensitive Data Guard for regex and dictionary-based masking across input, tool arguments, and SSE streaming output.
 - Retrieval and reranker abstractions.
 
 Real LLM reasoning, MCP execution, Milvus retrieval, BM25 indexing, BGE reranking, and persistent memory will be implemented in later iterations.

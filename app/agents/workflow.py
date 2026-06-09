@@ -6,6 +6,7 @@ from langgraph.graph import END, StateGraph
 
 from app.core.dependencies import get_memory_manager
 from app.memory import InMemoryMemoryManager
+from app.security import sanitize_text
 from app.schemas.diagnosis import DiagnosisRequest, DiagnosisState
 from app.schemas.retrieval import RetrievalResult
 from app.schemas.tools import ToolCallRecord
@@ -15,7 +16,10 @@ class WorkflowState(TypedDict, total=False):
     task_id: str
     session_id: str
     user_query: str
+    raw_query: str | None
     sanitized_query: str | None
+    sanitized_fields: list[str]
+    security_events: list[dict[str, Any]]
     device_name: str | None
     device_model: str | None
     fault_code: str | None
@@ -64,11 +68,25 @@ class DiagnosisWorkflow:
 
     @classmethod
     def from_request(cls, request: DiagnosisRequest) -> DiagnosisState:
+        sanitized = sanitize_text(request.message)
+        sanitized_fields = sorted({span.replacement.strip("[]") for span in sanitized.spans})
+        security_events = []
+        if sanitized.has_sensitive_data:
+            security_events.append(
+                {
+                    "event_type": "sensitive_data_detected",
+                    "sanitized_fields": sanitized_fields,
+                    "action_taken": "masked",
+                }
+            )
         return DiagnosisState(
             task_id=request.task_id or f"task-{uuid4().hex}",
             session_id=request.session_id,
-            user_query=request.message,
-            sanitized_query=request.message,
+            raw_query=request.message,
+            user_query=sanitized.sanitized_text,
+            sanitized_query=sanitized.sanitized_text,
+            sanitized_fields=sanitized_fields,
+            security_events=security_events,
         )
 
     def supervisor_node(self, state: WorkflowState) -> WorkflowState:
@@ -88,7 +106,7 @@ class DiagnosisWorkflow:
 
     async def diagnosis_node(self, state: WorkflowState) -> WorkflowState:
         diagnosis_state = _state_from_mapping(state)
-        query = diagnosis_state.user_query
+        query = diagnosis_state.sanitized_query or diagnosis_state.user_query
         normalized_query = query.upper()
         fault_match = FAULT_CODE_PATTERN.search(normalized_query)
 
@@ -139,7 +157,10 @@ class DiagnosisWorkflow:
                 task_tool_call_count=len(diagnosis_state.tool_call_history),
             )
             if not decision.args_signature:
-                diagnosis_state.handoff_required = decision.status == "circuit_breaker_required"
+                diagnosis_state.handoff_required = (
+                    decision.status == "circuit_breaker_required"
+                    or decision.reason == "sanitized_required"
+                )
                 diagnosis_state.handoff_reason = decision.reason if diagnosis_state.handoff_required else None
                 continue
 

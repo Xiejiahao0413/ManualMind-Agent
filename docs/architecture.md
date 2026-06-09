@@ -47,4 +47,17 @@ The safety report node creates a structured mock final answer. If high-risk work
 
 The SSE chat endpoint now streams coarse workflow events: `diagnosis_started`, `retrieval_started`, `safety_review_started`, followed by either `final_answer` or `handoff_required`.
 
+## Sensitive Data Guard
+
+The security layer currently provides a regex and dictionary-based sensitive data guard:
+
+- `SensitiveDataDetector` returns structured spans for phone numbers, emails, IP addresses, device IDs, work order IDs, internal URLs, and location keywords.
+- `DataSanitizer` replaces detected values with stable placeholders such as `[PHONE]`, `[EMAIL]`, `[IP_ADDRESS]`, `[DEVICE_ID]`, `[WORK_ORDER_ID]`, `[INTERNAL_URL]`, and `[LOCATION]`.
+- `StreamingOutputGuard` keeps a small rolling buffer so SSE chunks can be sanitized before they leave the API boundary, including simple split-sensitive-text cases.
+- `DiagnosisWorkflow.from_request` stores `raw_query`, routes the workflow with `sanitized_query`, and records `sanitized_fields` and `security_events`.
+- `ToolCallGuard` blocks tool arguments that still contain unsanitized sensitive data.
+- Sensitive input detections are written to Safety Memory with `event_type="sensitive_data_detected"` and `action_taken="masked"`.
+
+This guard is intended to cover user input, document ingestion hooks, MCP tool arguments, retrieval result filtering, and SSE streaming output. This iteration wires user input, tool arguments, and SSE output; document ingestion and retrieval result filtering will reuse the same sanitizer in later implementation passes.
+
 Real MCP execution, retrieval backends, LLM calls, and durable memory are still intentionally out of scope.
