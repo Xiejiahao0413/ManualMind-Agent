@@ -8,11 +8,22 @@ from app.memory import (
     TaskMemory,
     ToolMemory,
 )
-from app.retrieval import BGEReranker, BM25Retriever, HybridRetriever, MilvusDenseRetriever
+from app.retrieval import (
+    BGEReranker,
+    BM25Retriever,
+    HybridRetriever,
+    HybridRetrieverImpl,
+    InMemoryDenseRetriever,
+    LocalBM25Retriever,
+    MilvusDenseRetriever,
+    MockEmbeddingProvider,
+    MockReranker,
+)
 from app.schemas import (
     DiagnosisRequest,
     DiagnosisResponse,
     DiagnosisState,
+    DocumentChunk,
     HandoffPayload,
     RetrievalResult,
     ToolCallRecord,
@@ -37,6 +48,7 @@ def test_schema_imports() -> None:
     assert DiagnosisRequest
     assert DiagnosisResponse
     assert DiagnosisState
+    assert DocumentChunk
     assert HandoffPayload
     assert RetrievalResult
     assert ToolCallRecord
@@ -53,6 +65,11 @@ def test_interface_imports() -> None:
     assert MilvusDenseRetriever
     assert HybridRetriever
     assert BGEReranker
+    assert LocalBM25Retriever
+    assert InMemoryDenseRetriever
+    assert HybridRetrieverImpl
+    assert MockEmbeddingProvider
+    assert MockReranker
     assert RetryFallbackManager
     assert ToolResultValidator
     assert CircuitBreaker

@@ -60,4 +60,17 @@ The security layer currently provides a regex and dictionary-based sensitive dat
 
 This guard is intended to cover user input, document ingestion hooks, MCP tool arguments, retrieval result filtering, and SSE streaming output. This iteration wires user input, tool arguments, and SSE output; document ingestion and retrieval result filtering will reuse the same sanitizer in later implementation passes.
 
+## Hybrid Retrieval Layer
+
+The retrieval layer now has a testable hybrid retrieval implementation:
+
+- `DocumentChunk` defines manual evidence chunks with device metadata, source file, fault code, page, content type, and free-form metadata.
+- `LocalBM25Retriever` handles sparse exact matching for fault codes, device models, parameter names, and section titles.
+- `InMemoryDenseRetriever` implements the Milvus dense retriever interface with mock embeddings and cosine similarity, so tests can run without a Milvus service.
+- `merge_retrieval_results` combines BM25 and dense candidates by `chunk_id`; if both channels hit the same chunk, the result keeps both scores and marks `source="hybrid"`.
+- `MockReranker` represents the BGE-rerank interface and returns Top-N candidates. If reranking fails, `HybridRetrieverImpl` falls back to fused score sorting.
+- Metadata filters support `device_name`, `device_model`, `content_type`, `fault_code`, and `doc_id` to reduce cross-device retrieval errors.
+
+BM25 is intended for exact industrial manual signals such as `E03`, model numbers, threshold names, and section headings. Dense retrieval is intended for natural-language symptom descriptions. Reranking is the final evidence ordering step before agent report generation.
+
 Real MCP execution, retrieval backends, LLM calls, and durable memory are still intentionally out of scope.
