@@ -1,0 +1,1 @@
+"""ManualMind-Agent application package."""
