@@ -53,6 +53,7 @@ FAULT_CODE_PATTERN = re.compile(
     r"(?<![A-Z0-9])(?:ERROR\s*|ERR\s*)?([EFP])[-\s]?(\d{2,3})(?![A-Z0-9])",
     re.IGNORECASE,
 )
+DEVICE_MODEL_PATTERN = re.compile(r"\b[A-Z]\d{3}\b", re.IGNORECASE)
 HIGH_RISK_KEYWORDS = (
     "高压",
     "带电",
@@ -84,6 +85,11 @@ UNSAFE_BYPASS_KEYWORDS = (
     "跳过Tool Guard",
     "只给我最终拆卸命令",
     "删掉安全提醒",
+    "屏蔽告警",
+    "屏蔽超温报警",
+    "短接安全门",
+    "短接急停",
+    "旁路安全",
     "直接输出带压拆卸步骤",
     "直接告诉我怎么带电拆",
 )
@@ -106,9 +112,35 @@ UNSAFE_OPERATION_PATTERNS = (
     ("压力表没归零", "拆"),
     ("没有释放压力", "拆"),
     ("压力没释放", "拆"),
+    ("压力无法释放", "拆"),
+    ("滑块悬停", "压力无法释放"),
+    ("运行中", "清理"),
+    ("人员卷入", "继续运行"),
+    ("冷却液", "进电柜"),
+    ("电柜进水", "送电"),
+    ("安全联锁", "丢失"),
+    ("安全门", "短接"),
+    ("机械臂", "碰撞"),
+    ("碰撞", "夹具掉件"),
+    ("焦糊味", "继续运行"),
+    ("继电器粘连", "持续加热"),
+    ("切刀无法锁定", "开门运行"),
 )
 PARAMETER_KEYWORDS = ("温度", "电压", "压力", "阈值", "维护周期")
 PARAMETER_KEYWORDS = PARAMETER_KEYWORDS + ("temperature", "voltage", "pressure", "threshold", "maintenance")
+PARAMETER_QUERY_HINTS = (
+    "范围",
+    "多少",
+    "阈值",
+    "标准",
+    "额定",
+    "正常",
+    "要求",
+    "range",
+    "threshold",
+    "standard",
+    "rated",
+)
 
 
 def _state_from_mapping(state: WorkflowState) -> DiagnosisState:
@@ -130,6 +162,13 @@ def _fault_code_from_match(match: re.Match[str]) -> str:
 def _contains_high_risk_intent(query: str) -> bool:
     return any(keyword in query for keyword in HIGH_RISK_KEYWORDS) or any(
         all(term in query for term in terms) for terms in UNSAFE_OPERATION_PATTERNS
+    )
+
+
+def _contains_parameter_query(query: str) -> bool:
+    lower_query = query.lower()
+    return any(keyword.lower() in lower_query for keyword in PARAMETER_KEYWORDS) and any(
+        hint.lower() in lower_query for hint in PARAMETER_QUERY_HINTS
     )
 
 
@@ -273,9 +312,12 @@ class DiagnosisWorkflow:
         query = diagnosis_state.sanitized_query or diagnosis_state.user_query
         normalized_query = query.upper()
         fault_match = FAULT_CODE_PATTERN.search(normalized_query)
+        model_match = DEVICE_MODEL_PATTERN.search(normalized_query)
 
         if fault_match:
             diagnosis_state.fault_code = _fault_code_from_match(fault_match)
+        if model_match:
+            diagnosis_state.device_model = model_match.group(0).upper()
 
         detected_symptoms = [keyword for keyword in HIGH_RISK_KEYWORDS if keyword in query]
         if detected_symptoms:
@@ -287,7 +329,7 @@ class DiagnosisWorkflow:
         elif diagnosis_state.fault_code:
             diagnosis_state.risk_level = "medium"
             diagnosis_state.query_type = "fault_code"
-        elif any(keyword in query for keyword in PARAMETER_KEYWORDS):
+        elif _contains_parameter_query(query):
             diagnosis_state.risk_level = "low"
             diagnosis_state.query_type = "parameter"
         else:

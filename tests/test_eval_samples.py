@@ -13,6 +13,7 @@ from app.tracing import InMemoryTraceManager
 
 SAMPLE_PATH = Path("data/eval_samples/equipment_fault_eval_50.json")
 ADVERSARIAL_SAMPLE_PATH = Path("data/eval_samples/equipment_fault_adversarial_30.json")
+MULTI_MANUAL_SAMPLE_PATH = Path("data/eval_samples/equipment_fault_multi_manuals_50.json")
 REQUIRED_FIELDS = {
     "sample_id",
     "query",
@@ -40,6 +41,10 @@ def load_raw_adversarial_samples() -> list[dict]:
     return json.loads(ADVERSARIAL_SAMPLE_PATH.read_text(encoding="utf-8"))
 
 
+def load_raw_multi_manual_samples() -> list[dict]:
+    return json.loads(MULTI_MANUAL_SAMPLE_PATH.read_text(encoding="utf-8"))
+
+
 def test_eval_sample_file_exists() -> None:
     assert SAMPLE_PATH.exists()
 
@@ -48,12 +53,20 @@ def test_adversarial_eval_sample_file_exists() -> None:
     assert ADVERSARIAL_SAMPLE_PATH.exists()
 
 
+def test_multi_manual_eval_sample_file_exists() -> None:
+    assert MULTI_MANUAL_SAMPLE_PATH.exists()
+
+
 def test_eval_sample_file_contains_50_samples() -> None:
     assert len(load_raw_samples()) == 50
 
 
 def test_adversarial_eval_sample_file_contains_30_samples() -> None:
     assert len(load_raw_adversarial_samples()) == 30
+
+
+def test_multi_manual_eval_sample_file_contains_50_samples() -> None:
+    assert len(load_raw_multi_manual_samples()) == 50
 
 
 def test_eval_samples_have_required_fields() -> None:
@@ -72,6 +85,15 @@ def test_adversarial_eval_samples_have_required_fields() -> None:
         assert sample["scenario_type"]
         assert isinstance(sample["expected_tool_names"], list)
         assert isinstance(sample["expected_sensitive_masks"], list)
+
+
+def test_multi_manual_eval_samples_have_required_fields() -> None:
+    for sample in load_raw_multi_manual_samples():
+        assert REQUIRED_FIELDS.issubset(sample)
+        assert sample["sample_id"]
+        assert sample["query"]
+        assert sample["scenario_type"] == "multi_manual"
+        assert isinstance(sample["expected_tool_names"], list)
 
 
 def test_eval_sample_categories_cover_required_set() -> None:
@@ -99,6 +121,14 @@ def test_load_eval_samples_loads_30_adversarial_samples() -> None:
 
     assert len(samples) == 30
     assert samples[0].scenario_type in REQUIRED_SCENARIOS
+
+
+def test_load_eval_samples_loads_50_multi_manual_samples() -> None:
+    samples = load_eval_samples(str(MULTI_MANUAL_SAMPLE_PATH), expected_count=50)
+
+    assert len(samples) == 50
+    assert {sample.category for sample in samples}.issuperset(REQUIRED_CATEGORIES)
+    assert {sample.scenario_type for sample in samples} == {"multi_manual"}
 
 
 def test_run_eval_file_returns_total_and_category_breakdown() -> None:
@@ -179,10 +209,11 @@ def test_run_eval_files_generates_scenario_breakdown_and_new_metrics() -> None:
     assert isinstance(response.boundary_handling_accuracy, float)
 
 
-def test_run_eval_cli_default_loads_80_samples() -> None:
+def test_run_eval_cli_default_loads_130_samples() -> None:
     output = _run_eval_cli()
 
-    assert output["total_samples"] == 80
+    assert output["total_samples"] == 130
+    assert output["sample_sets"] == {"standard": 50, "adversarial": 30, "multi_manuals": 50}
     assert "scenario_breakdown" in output
 
 
@@ -199,6 +230,25 @@ def test_run_eval_cli_adversarial_loads_30_samples() -> None:
     assert REQUIRED_SCENARIOS.issubset(output["scenario_breakdown"])
     assert output["category_breakdown"]["handoff"]["handoff_accuracy"] > 0
     assert output["scenario_breakdown"]["high_risk"]["handoff_accuracy"] > 0
+
+
+def test_run_eval_cli_multi_manuals_loads_50_samples() -> None:
+    output = _run_eval_cli("--multi-manuals")
+
+    assert output["total_samples"] == 50
+    assert output["sample_sets"]["multi_manuals"] == 50
+    assert "multi_manual" in output["scenario_breakdown"]
+    assert output["handoff_accuracy"] >= 0.85
+    assert output["category_breakdown"]["handoff"]["handoff_accuracy"] >= 0.8
+
+
+def test_multi_manual_safety_samples_keep_mixed_handoff_expectations() -> None:
+    safety_samples = [
+        sample for sample in load_raw_multi_manual_samples() if sample["category"] == "safety"
+    ]
+
+    assert any(sample["expected_handoff"] is True for sample in safety_samples)
+    assert any(sample["expected_handoff"] is False for sample in safety_samples)
 
 
 def _run_eval_cli(*args: str) -> dict:

@@ -57,6 +57,11 @@ Each chunk contains:
 
 `chunk_id` is stable for repeated indexing of the same document content.
 
+The repository also includes a local multi-manual corpus under `data/manuals/`.
+It contains 10 original simulated Markdown manuals for A100/B200/C300/D400/P500/G600/H800/W700/T100/K900 equipment.
+`scripts/index_manuals.py` batch-indexes these files into the current in-memory `ManualIndexer` and prints document, chunk, fault-code, and device-model counts.
+This dataset is intended for local hybrid retrieval tests and later Milvus collection experiments without using real vendor manuals.
+
 ## Retrieval Pipeline
 
 The hybrid retrieval layer combines precise sparse retrieval and semantic-style dense retrieval:
@@ -78,6 +83,9 @@ BM25 is useful for exact industrial signals:
 - section titles
 
 Dense retrieval is represented by `InMemoryDenseRetriever` and `MockEmbeddingProvider` for tests. The interface is designed so a real Milvus-backed retriever can replace it later.
+
+Multi-manual retrieval experiments should index `data/manuals/` first, then query with device models such as `B200`, `C300`, or `H800`.
+The workflow performs lightweight device-model extraction so retrieval metadata can limit evidence to the matching manual where possible.
 
 The reranker is represented by an interface plus `MockReranker`. If rerank fails, `HybridRetrieverImpl` falls back to fused retrieval score ordering.
 

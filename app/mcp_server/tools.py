@@ -84,6 +84,13 @@ PARAMETER_DATA = {
     "维护周期": {"standard_range": "30 days", "min": 0.0, "max": 30.0, "source_refs": ["mx100_manual.pdf:30"]},
 }
 
+PARAMETER_ALIASES = {
+    "temperature": ("temperature", "温度"),
+    "pressure": ("pressure", "压力"),
+    "voltage": ("voltage", "电压"),
+    "maintenance_cycle": ("maintenance", "maintenance_cycle", "维护周期", "保养周期"),
+}
+
 
 def build_demo_hybrid_retriever() -> HybridRetrieverImpl:
     retriever = HybridRetrieverImpl()
@@ -159,13 +166,15 @@ async def fault_code_lookup(arguments: dict) -> FaultCodeLookupResponse:
 async def parameter_lookup(arguments: dict) -> ParameterLookupResponse:
     request = ParameterLookupRequest.model_validate(arguments)
     key = request.parameter_name.lower()
+    aliases = PARAMETER_ALIASES.get(key, (key, request.parameter_name))
     for chunk in get_indexed_chunks():
         if chunk.content_type != "parameter":
             continue
         if not matches_device_model(chunk, request.device_model):
             continue
         parameter_name = str(chunk.metadata.get("parameter_name") or request.parameter_name)
-        if key not in chunk.text.lower() and key not in parameter_name.lower():
+        searchable_text = f"{chunk.section_title or ''}\n{chunk.text}".lower()
+        if not any(alias.lower() in searchable_text for alias in aliases) and key not in parameter_name.lower():
             continue
         if request.observed_value is not None and (
             chunk.metadata.get("min") is None or chunk.metadata.get("max") is None

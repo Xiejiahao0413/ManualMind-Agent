@@ -10,10 +10,12 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from app.core.dependencies import get_manual_indexer
 from app.evaluation import EvaluationRunner
 from app.tracing import InMemoryTraceManager
+from scripts.manuals import MANUALS_DIR, index_manuals
 
 
 DEFAULT_SAMPLE_PATH = PROJECT_ROOT / "data/eval_samples/equipment_fault_eval_50.json"
 ADVERSARIAL_SAMPLE_PATH = PROJECT_ROOT / "data/eval_samples/equipment_fault_adversarial_30.json"
+MULTI_MANUAL_SAMPLE_PATH = PROJECT_ROOT / "data/eval_samples/equipment_fault_multi_manuals_50.json"
 DEMO_MANUAL_PATH = PROJECT_ROOT / "data/demo_manuals/a100_manual.md"
 EVAL_NOTE = "This evaluation uses local demo data and mock/in-memory components."
 
@@ -24,17 +26,26 @@ async def main() -> None:
 
     runner = EvaluationRunner(trace_manager=InMemoryTraceManager())
     if args.standard:
+        sample_sets = {"standard": 50, "adversarial": 0, "multi_manuals": 0}
         response = await runner.run_eval_files([str(DEFAULT_SAMPLE_PATH)], expected_counts=[50])
     elif args.adversarial:
+        sample_sets = {"standard": 0, "adversarial": 30, "multi_manuals": 0}
         response = await runner.run_eval_files([str(ADVERSARIAL_SAMPLE_PATH)], expected_counts=[30])
+    elif args.multi_manuals:
+        index_manuals(MANUALS_DIR)
+        sample_sets = {"standard": 0, "adversarial": 0, "multi_manuals": 50}
+        response = await runner.run_eval_files([str(MULTI_MANUAL_SAMPLE_PATH)], expected_counts=[50])
     else:
+        index_manuals(MANUALS_DIR)
+        sample_sets = {"standard": 50, "adversarial": 30, "multi_manuals": 50}
         response = await runner.run_eval_files(
-            [str(DEFAULT_SAMPLE_PATH), str(ADVERSARIAL_SAMPLE_PATH)],
-            expected_counts=[50, 30],
+            [str(DEFAULT_SAMPLE_PATH), str(ADVERSARIAL_SAMPLE_PATH), str(MULTI_MANUAL_SAMPLE_PATH)],
+            expected_counts=[50, 30, 50],
         )
     summary = {
         "note": EVAL_NOTE,
         "total_samples": response.total,
+        "sample_sets": sample_sets,
         "tool_selection_accuracy": response.tool_selection_accuracy,
         "fault_code_accuracy": response.fault_code_accuracy,
         "handoff_accuracy": response.handoff_accuracy,
@@ -58,7 +69,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Run only the 30 adversarial/boundary samples.",
     )
-    group.add_argument("--all", action="store_true", help="Run all 80 samples. This is the default.")
+    group.add_argument(
+        "--multi-manuals",
+        action="store_true",
+        help="Run only the 50 multi-manual samples.",
+    )
+    group.add_argument("--all", action="store_true", help="Run all 130 samples. This is the default.")
     return parser.parse_args()
 
 

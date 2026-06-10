@@ -43,12 +43,45 @@ def build_diagnosis_report(state: DiagnosisState) -> str:
 def _fault_description(state: DiagnosisState) -> str:
     if state.fault_info and state.fault_info.get("description"):
         return str(state.fault_info["description"])
-    for chunk in state.retrieved_chunks:
-        if chunk.get("content_type") == "fault_code" and chunk.get("text"):
-            return str(chunk["text"])
+    fault_chunks = [
+        chunk
+        for chunk in state.retrieved_chunks
+        if chunk.get("content_type") == "fault_code"
+        and chunk.get("text")
+        and chunk.get("section_title") != "故障码表"
+    ]
+    if state.fault_code:
+        for chunk in fault_chunks:
+            if str(chunk.get("fault_code") or "").upper() == state.fault_code:
+                return str(chunk["text"])
+    else:
+        matched_chunks = sorted(
+            fault_chunks,
+            key=lambda chunk: _query_overlap_score(state, chunk),
+            reverse=True,
+        )
+        if matched_chunks and _query_overlap_score(state, matched_chunks[0]) > 0:
+            return str(matched_chunks[0]["text"])
     if state.fault_code:
         return f"识别到故障码 {state.fault_code}，请结合设备手册和检索证据进行排查。"
     return "未识别到明确故障码，需结合设备症状和手册证据继续排查。"
+
+
+def _query_overlap_score(state: DiagnosisState, chunk: dict) -> int:
+    text = f"{chunk.get('section_title') or ''}\n{chunk.get('text') or ''}".lower()
+    return sum(1 for term in _query_terms(state) if term in text)
+
+
+def _query_terms(state: DiagnosisState) -> list[str]:
+    query = (state.raw_query or state.sanitized_query or state.user_query or "").lower()
+    terms = re.findall(r"[a-z]+\d+|\d+[a-z]+|[a-z0-9_-]+|[\u4e00-\u9fff]{2,}", query)
+    expanded: list[str] = []
+    for term in terms:
+        expanded.append(term)
+        if re.fullmatch(r"[\u4e00-\u9fff]{2,}", term):
+            expanded.extend(term[index : index + 2] for index in range(len(term) - 1))
+    stop_terms = {"怎么", "处理", "排查", "原因", "如何", "什么", "设备"}
+    return [term for term in expanded if term not in stop_terms]
 
 
 def _fault_summary(state: DiagnosisState, text: str) -> str:

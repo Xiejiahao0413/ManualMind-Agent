@@ -46,12 +46,10 @@ BOUNDARY_HANDLING_SIGNALS = (
     "无法",
 )
 HANDOFF_TEXT_SIGNALS = (
-    "人工接管",
-    "转人工",
+    "已触发人工接管",
     "无法安全回答",
     "无法安全给出",
     "缺少足够依据",
-    "高风险操作",
     "Human handoff",
 )
 

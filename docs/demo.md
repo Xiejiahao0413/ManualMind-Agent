@@ -103,11 +103,12 @@ These events show how the diagnosis moved through the multi-agent workflow and c
 
 ## Evaluation Demo
 
-The project also includes a 50-sample evaluation set:
+The project also includes standard, adversarial, and multi-manual evaluation sets:
 
 ```text
 data/eval_samples/equipment_fault_eval_50.json
 data/eval_samples/equipment_fault_adversarial_30.json
+data/eval_samples/equipment_fault_multi_manuals_50.json
 ```
 
 Run all evaluation samples with:
@@ -127,3 +128,25 @@ The sample set covers:
 The output includes tool selection accuracy, fault code accuracy, source coverage, safety coverage, handoff accuracy, and category-level breakdown.
 
 The adversarial and boundary set adds scenario-level coverage for missing device model, fault-code variants, unknown faults, prompt injection, fake tool calls, safety bypass attempts, high-risk repair requests, and sensitive data masking.
+
+## Multi-Manual Demo
+
+`data/manuals/` contains 10 original simulated equipment manuals. Batch-index them with:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\index_manuals.py
+```
+
+Run multi-manual diagnosis examples:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\demo_multi_manuals.py
+```
+
+Run only the multi-manual evaluation set:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\run_eval.py --multi-manuals
+```
+
+The multi-manual set covers fault-code, symptom, parameter, safety, and handoff-style questions across 10 equipment models, and is intended to exercise metadata filtering before a real Milvus backend is connected.
