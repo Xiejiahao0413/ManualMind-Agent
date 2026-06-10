@@ -1,260 +1,276 @@
 # ManualMind-Agent
 
-A production-style multi-agent fault diagnosis system for complex equipment manuals.
+[English](#english) | [中文](#中文)
 
-## Overview / 项目概述
+---
 
-ManualMind-Agent is a Python/FastAPI engineering project for diagnosing industrial equipment faults from manuals, fault code tables, maintenance instructions, safety rules, and historical cases. It is designed as more than a simple RAG demo: the project emphasizes controlled tool calling, hybrid retrieval, streaming safety filtering, traceability, retry/fallback handling, circuit breakers, and human handoff.
+<a id="english"></a>
 
-中文说明：ManualMind-Agent 面向复杂设备手册和工业故障诊断场景，目标不是做一个简单的“文档问答 RAG”，而是搭建一个具备工程控制能力的多 Agent 系统。它覆盖文档入库、混合检索、受控工具调用、安全脱敏、SSE 流式输出、Trace 追踪、评测闭环和人工接管，适合作为 Agent 工程化项目展示。
+## English
 
-## Core Features / 核心功能
+**ManualMind-Agent** is a production-style multi-agent fault diagnosis system for complex equipment manuals.
 
-- LangGraph supervisor-worker multi-agent workflow.
-- MCP-style tool execution layer with registry, executor, schemas, and structured errors.
-- BM25 + dense vector + rerank hybrid retrieval pipeline.
-- Sensitive data guard for input, tool arguments, document ingestion, and SSE output.
-- Tool Router / Tool Call Guard / Retry / Fallback / Circuit Breaker control layer.
-- Human handoff payload generation for unsafe or unresolved cases.
-- Trace & Evaluation layer for workflow events, tool calls, retrieval quality, fallback, and handoff decisions.
-- FastAPI API layer with SSE streaming diagnosis responses.
-- Runnable end-to-end demo using an A100 air compressor manual and E03 fault code.
+It demonstrates how to connect document ingestion, hybrid retrieval, controlled tool execution, safety guardrails, tracing, evaluation, and human handoff in one local Agent engineering project.
 
-中文说明：核心设计重点是“可控”和“可追踪”。Agent 不直接调用工具，而是通过 Tool Router、Tool Call Guard、Retry/Fallback 和 MCP Tool Executor 完成受控调用；检索层同时支持故障码等精确匹配和语义检索；高风险或证据不足时可以触发人工接管；Trace 和 Evaluation 用于排查链路问题和做回归评测。
+> **Synthetic data statement:** this repository uses synthetic equipment manuals and synthetic evaluation samples only. It does not include real manufacturer manuals, private industrial documents, or production customer data.
 
-## Architecture / 系统架构
+---
 
-```mermaid
-flowchart TD
-    Client[Client / Demo Script] --> API[FastAPI Stateless API]
-    API --> Guard[Sensitive Data Guard]
-    Guard --> StreamGuard[SSE Streaming Output Guard]
-    Guard --> Graph[LangGraph Multi-Agent Workflow]
+## Core Features
 
-    Graph --> Supervisor[Supervisor Node]
-    Supervisor --> Diagnosis[Diagnosis Node]
-    Supervisor --> Retrieval[Retrieval Node]
-    Supervisor --> Safety[Safety Report Node]
-    Supervisor --> Breaker[Circuit Breaker Node]
-    Supervisor --> Handoff[Handoff Node]
+- **LangGraph-style multi-agent workflow** with supervisor, diagnosis, retrieval, safety/report, circuit breaker, and handoff nodes.
+- **MCP-style tool execution layer** with tool registry, executor, structured schemas, and controlled tool access.
+- **Tool control layer** with Tool Router, Tool Call Guard, retry/fallback handling, duplicate-call reuse, and circuit breaker logic.
+- **Hybrid retrieval** with BM25 sparse retrieval, dense retrieval interface, metadata filters, candidate merge/dedup, and rerank abstraction.
+- **Document ingestion** for Markdown/text manuals, section splitting, sensitive-data sanitization, chunk metadata, and local indexing.
+- **Sensitive data guard** for user input, tool arguments, retrieval results, and SSE streaming output.
+- **Human handoff** for high-risk operations, unsafe user requests, insufficient evidence, and retry-limit failures.
+- **Trace & Evaluation** for workflow events, tool calls, retrieval evidence, fallback decisions, safety behavior, and handoff decisions.
 
-    Retrieval --> Router[Tool Router]
-    Router --> ToolGuard[Tool Call Guard]
-    ToolGuard --> Retry[Retry & Fallback Manager]
-    Retry --> Executor[MCP Tool Executor]
-    Executor --> Tools[MCP Tool Server]
-    Tools --> Hybrid[Hybrid Retrieval]
+---
 
-    Hybrid --> BM25[BM25 Sparse Retrieval]
-    Hybrid --> Dense[In-Memory Dense / Milvus Interface]
-    Hybrid --> Rerank[BGE-Rerank Interface]
+## Current Scope
 
-    Graph --> Memory[Memory Manager]
-    Executor --> Memory
-    Graph --> Trace[Trace Manager]
-    Trace --> Eval[Evaluation Runner]
-```
+The current repository uses in-memory and mock/local components so the full demo can run on a laptop without external services.
 
-中文说明：FastAPI 层保持 stateless，任务状态、工具调用记录、安全审计和 Trace 都由独立 Manager 管理。LangGraph 负责多 Agent 状态流转，Retrieval Node 只能通过 Tool Control Layer 调用 MCP 工具，MCP 工具再访问 Hybrid Retrieval。这样可以避免 Agent 绕过工具控制层，也便于后续替换真实 Milvus、BGE-rerank 或远程 MCP Server。
+Production extension points:
 
-## End-To-End Flow
+- Real LLM calls
+- Real Milvus deployment
+- Production BGE rerank model loading
+- PDF/OCR parsing
+- Persistent memory and trace storage
+- Real MCP client/server transport
+- Enterprise authentication, authorization, and audit storage
 
-```mermaid
-sequenceDiagram
-    participant User
-    participant API as FastAPI
-    participant Ingestion as ManualIndexer
-    participant Workflow as LangGraph Workflow
-    participant Tool as Tool Control Layer
-    participant MCP as MCP Tool Executor
-    participant Retrieval as Hybrid Retriever
-    participant Trace as Trace Manager
+This project focuses on explicit Python control logic instead of hiding business behavior inside prompts.
 
-    User->>API: Upload demo manual
-    API->>Ingestion: Parse, sanitize, split, build chunks
-    Ingestion->>Retrieval: Add chunks to BM25 + dense indexes
-    User->>API: POST /api/diagnosis/chat
-    API->>Workflow: Create DiagnosisState
-    Workflow->>Tool: Route and guard tool calls
-    Tool->>MCP: Execute manual_hybrid_search / fault_code_lookup
-    MCP->>Retrieval: Search indexed manual chunks
-    Retrieval-->>Workflow: Evidence + source_refs
-    Workflow->>Trace: Record nodes and tool events
-    Workflow-->>API: Structured final_answer
-    API-->>User: SSE events with trace_id
-```
+---
 
-## Quick Start / 快速开始
+## Data Scale
+
+Current local demo data:
+
+- `data/demo_manuals/a100_manual.md`: one focused A100 compressor manual.
+- `data/manuals/`: 10 synthetic Markdown manuals across multiple equipment types.
+- `data/eval_samples/equipment_fault_eval_50.json`: 50 standard evaluation samples.
+- `data/eval_samples/equipment_fault_adversarial_30.json`: 30 adversarial/boundary evaluation samples.
+- `data/eval_samples/equipment_fault_multi_manuals_50.json`: 50 multi-manual evaluation samples.
+
+Default evaluation currently runs **130 samples**.
+
+---
+
+## Quick Start
+
+Create and activate a virtual environment:
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\activate
+```
+
+Install dependencies:
+
+```powershell
 pip install -r requirements.txt
-```
-
-中文说明：当前 demo 不依赖真实 LLM、真实 Milvus 或外部服务，安装依赖后即可在本地运行。
-
-Run the local demo without starting the API server:
-
-```powershell
-.\.venv\Scripts\python.exe scripts\demo_run.py
-```
-
-Start FastAPI:
-
-```powershell
-uvicorn app.main:app --reload
 ```
 
 Run tests:
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest
+.venv\Scripts\python.exe -m pytest
 ```
 
-Run the evaluation sets:
+Run the single-manual demo:
 
 ```powershell
-.\.venv\Scripts\python.exe scripts\run_eval.py --all
+.venv\Scripts\python.exe scripts\demo_run.py
 ```
 
-Expected test result:
-
-```text
-105 passed, 1 warning
-```
-
-The warning is from the FastAPI/TestClient `httpx` deprecation path and does not affect the current demo.
-
-## Demo / 示例演示
-
-`scripts/demo_run.py` indexes `data/demo_manuals/a100_manual.md`, runs an E03 diagnosis, and prints the trace id, source references, and final report.
-
-中文说明：示例手册是“空压机 A100”设备手册，其中包含故障码 `E03`、温度传感器异常说明、可能原因、排查步骤、安全提醒和维护周期。运行 demo 后，可以看到从文档入库、检索、工具调用、报告生成到 Trace 输出的完整链路。
-
-```text
-indexed_doc_id: demo-a100-manual
-chunks_count: 5
-trace_id: trace-<generated>
-source_refs: ['a100_manual.md', 'a100_manual.md:1']
-final_answer:
-故障识别：
-E03 表示温度传感器异常。控制器检测到温度传感器信号超出正常范围，可能导致温度读数不稳定、保护停机或过热报警
-
-可能原因：
-- 温度传感器接线松动或端子氧化
-- 温度传感器探头损坏
-- 冷却风扇堵塞导致局部温度异常
-- 控制器采样通道异常
-
-排查步骤：
-1. 先断电并等待设备冷却
-2. 检查温度传感器插头、线束和端子
-3. 清理冷却风道和风扇滤网
-4. 复位后观察 E03 是否再次出现
-5. 如 E03 持续出现，更换温度传感器并记录维修结果
-
-安全提醒：
-- 处理 E03 前必须断电、等待冷却，禁止带压拆卸温度传感器
-
-引用来源：
-- a100_manual.md
-- a100_manual.md:1
-```
-
-See [docs/demo.md](docs/demo.md) for a longer walkthrough.
-
-## Evaluation Samples / 评测样本
-
-The repository includes `data/eval_samples/equipment_fault_eval_50.json`, a 50-sample standard evaluation set for the A100 demo manual. It also includes `data/eval_samples/equipment_fault_adversarial_30.json`, a 30-sample adversarial and boundary evaluation set. The multi-manual dataset adds `data/eval_samples/equipment_fault_multi_manuals_50.json`, covering 10 simulated equipment manuals under `data/manuals/`.
-
-Multi-manual local indexing and demo commands:
+Run the multi-manual demo:
 
 ```powershell
-.\.venv\Scripts\python.exe scripts\index_manuals.py
-.\.venv\Scripts\python.exe scripts\demo_multi_manuals.py
-.\.venv\Scripts\python.exe scripts\run_eval.py --multi-manuals
+.venv\Scripts\python.exe scripts\demo_multi_manuals.py
 ```
 
-`scripts\run_eval.py --all` now runs standard + adversarial + multi-manual samples, for 130 local evaluation samples.
-
-中文说明：标准 50 条样本覆盖故障码识别、故障现象诊断、参数查询、安全规范和人工接管五类问题；对抗/边界 30 条样本覆盖缺少设备型号、故障码格式变体、未知故障码、提示词注入、安全绕过、敏感信息混入和高风险维修等场景。Evaluation Runner 会输出 category 和 scenario_type 两个维度的分类统计。
-
-## API Examples
-
-Upload the demo manual:
+Run evaluation:
 
 ```powershell
-curl.exe -X POST http://127.0.0.1:8000/api/manual/upload `
-  -F "file=@data/demo_manuals/a100_manual.md;type=text/markdown"
+.venv\Scripts\python.exe scripts\run_eval.py
 ```
 
-Index the returned `doc_id`:
+Start the API server:
 
 ```powershell
-curl.exe -X POST http://127.0.0.1:8000/api/manual/index `
-  -H "Content-Type: application/json" `
-  -d "{\"doc_id\":\"<doc_id>\",\"device_name\":\"空压机 A100\",\"device_model\":\"A100\"}"
+uvicorn app.main:app --reload
 ```
 
-Run diagnosis chat with SSE:
+---
 
-```powershell
-curl.exe -N -X POST http://127.0.0.1:8000/api/diagnosis/chat `
-  -H "Content-Type: application/json" `
-  -d "{\"session_id\":\"demo-session\",\"message\":\"空压机 A100 报 E03，应该如何排查？\"}"
-```
+## Evaluation Summary
 
-Query trace events:
+The evaluation framework measures:
 
-```powershell
-curl.exe http://127.0.0.1:8000/api/trace/<trace_id>/events
-```
+- Tool selection accuracy
+- Fault code extraction accuracy
+- Source evidence coverage
+- Safety reminder coverage
+- Handoff decision accuracy
+- Scenario breakdown for normal, boundary, adversarial, failure, high-risk, and security cases
+
+The metrics are based on local synthetic manuals, mock/in-memory retrieval components, and deterministic workflow logic. They validate the engineering chain rather than claim production accuracy.
+
+---
+
+## Docs
+
+- [Architecture](docs/architecture.md)
+- [Demo Guide](docs/demo.md)
+- [Interview Notes](docs/interview_notes.md)
+
+---
 
 ## Project Structure
 
 ```text
 app/
-  agents/        LangGraph workflow, tool-service integration, report formatter
-  api/           FastAPI routers for manual, diagnosis, trace, eval, health
-  core/          Config, dependencies, SSE helpers
-  evaluation/    Evaluation schemas and runner
-  ingestion/     Manual parsing, splitting, metadata, in-memory indexing
-  mcp_server/    MCP-style tool schemas, registry, executor, tool implementations
-  memory/        Memory interfaces and in-memory implementation
-  retrieval/     BM25, dense retriever interface, hybrid search, reranker
-  schemas/       Pydantic schemas for diagnosis, tools, retrieval, traces, documents
-  security/      Sensitive data detector, sanitizer, streaming output guard
-  tools/         Tool router, guard, retry/fallback, validator, circuit breaker
-  tracing/       In-memory trace manager
+  agents/        multi-agent workflow and report formatter
+  api/           FastAPI route modules
+  core/          shared app configuration and dependencies
+  evaluation/    evaluation schemas, loader, and runner
+  ingestion/     manual parser, splitter, metadata, and indexer
+  mcp_server/    MCP-style tool schemas, registry, executor, tools
+  memory/        in-memory memory manager
+  retrieval/     BM25, dense retriever interface, hybrid retrieval, rerank
+  schemas/       Pydantic schemas
+  security/      sensitive-data detector, sanitizer, streaming guard
+  tools/         tool router, guard, fallback, validator, circuit breaker
+  tracing/       in-memory trace manager
 data/
-  demo_manuals/  A100 demo equipment manual
-  manuals/       10 simulated equipment manuals for local retrieval experiments
-  eval_samples/  Standard, adversarial, and multi-manual evaluation samples
-docs/
-  architecture.md
-  demo.md
-  interview_notes.md
-scripts/
-  demo_run.py
-  demo_multi_manuals.py
-  index_manuals.py
-  run_eval.py
-tests/
+  demo_manuals/  focused A100 demo manual
+  manuals/       synthetic multi-equipment manuals
+  eval_samples/  standard, adversarial, and multi-manual eval sets
+docs/            architecture, demo, and interview notes
+scripts/         demo and evaluation scripts
+tests/           pytest test suite
 ```
 
-## Current Scope / 当前范围
+---
 
-This repository currently uses in-memory components so the full demo can run locally without external services. Real LLM calls, real Milvus deployment, production BGE rerank model loading, PDF/OCR parsing, and durable memory are intentionally left for later iterations.
+<a id="中文"></a>
 
-该仓库目前采用内存型组件，使完整 demo 可以在本地直接运行，而不依赖外部服务。真实 LLM 调用、真实 Milvus 部署、生产级 BGE rerank 模型加载、PDF/OCR 解析以及持久化记忆等能力，被设计为生产化扩展点，便于后续替换和接入。
+## 中文
 
-## Roadmap
+**ManualMind-Agent** 是一个面向复杂设备手册的生产化风格多 Agent 故障诊断系统。
 
-- Add real Milvus persistence and collection management.
-- Add production BGE embedding and rerank implementations.
-- Add PDF parsing and OCR adapters for scanned manuals.
-- Add a real MCP transport layer around the local tool server.
-- Add durable memory backends for session, task, tool, safety, and case memory.
-- Expand evaluation datasets and regression metrics.
-- Add authentication and tenant-aware access control for production API usage.
+它把文档入库、混合检索、受控工具调用、安全防护、Trace、Evaluation 和人工接管串成一条可运行的本地工程链路，重点展示 Agent 系统工程能力，而不是普通 RAG Demo。
+
+> **合成数据声明：** 本仓库只使用模拟设备手册和模拟评测样本，不包含真实厂家手册、企业内部文档或生产客户数据。
+
+---
+
+## 核心功能
+
+- **LangGraph 风格多 Agent 工作流**：包含 supervisor、diagnosis、retrieval、safety/report、circuit breaker、handoff 节点。
+- **MCP 风格工具执行层**：包含工具注册、统一执行器、结构化 schema 和受控工具访问。
+- **工具控制层**：包含 Tool Router、Tool Call Guard、重试降级、重复调用复用和熔断逻辑。
+- **混合检索**：包含 BM25、Dense Retriever 接口、metadata filter、候选合并去重和 rerank 抽象。
+- **文档入库**：支持 Markdown/text 手册解析、结构化切分、脱敏、chunk 元数据和本地索引。
+- **敏感信息防护**：覆盖用户输入、工具参数、检索结果和 SSE 流式输出。
+- **人工接管**：用于高风险操作、不安全请求、证据不足和重试失败场景。
+- **Trace & Evaluation**：记录节点流转、工具调用、检索证据、降级决策、安全行为和接管原因。
+
+---
+
+## 当前范围
+
+该仓库目前采用内存型组件，使完整 demo 可以在本地直接运行，而不依赖外部服务。
+
+真实 LLM 调用、真实 Milvus 部署、生产级 BGE rerank 模型加载、PDF/OCR 解析以及持久化记忆等能力，被设计为生产化扩展点，便于后续替换和接入。
+
+本项目强调用显式 Python 逻辑实现路由、工具防护、重试降级、熔断、脱敏和人工接管，而不是把关键业务逻辑隐藏在 prompt 中。
+
+---
+
+## 数据规模
+
+当前本地数据包括：
+
+- `data/demo_manuals/a100_manual.md`：一份 A100 空压机示例手册。
+- `data/manuals/`：10 份多设备模拟 Markdown 手册。
+- `data/eval_samples/equipment_fault_eval_50.json`：50 条标准评测样本。
+- `data/eval_samples/equipment_fault_adversarial_30.json`：30 条对抗/边界评测样本。
+- `data/eval_samples/equipment_fault_multi_manuals_50.json`：50 条多手册评测样本。
+
+默认评测共运行 **130 条样本**。
+
+---
+
+## 快速开始
+
+创建并激活虚拟环境：
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\activate
+```
+
+安装依赖：
+
+```powershell
+pip install -r requirements.txt
+```
+
+运行测试：
+
+```powershell
+.venv\Scripts\python.exe -m pytest
+```
+
+运行单手册 Demo：
+
+```powershell
+.venv\Scripts\python.exe scripts\demo_run.py
+```
+
+运行多手册 Demo：
+
+```powershell
+.venv\Scripts\python.exe scripts\demo_multi_manuals.py
+```
+
+运行评测：
+
+```powershell
+.venv\Scripts\python.exe scripts\run_eval.py
+```
+
+启动 API：
+
+```powershell
+uvicorn app.main:app --reload
+```
+
+---
+
+## 评测结果摘要
+
+当前评测框架覆盖：
+
+- 工具选择准确率
+- 故障码识别准确率
+- 证据来源覆盖率
+- 安全提醒覆盖率
+- 人工接管决策准确率
+- normal、boundary、adversarial、failure、high_risk、security 等场景统计
+
+这些指标基于本地模拟手册、mock/in-memory 检索组件和确定性工作流逻辑，用于验证系统链路和评测框架，不代表真实生产准确率。
+
+---
+
+## 文档链接
+
+- [架构文档](docs/architecture.md)
+- [Demo 文档](docs/demo.md)
+- [面试讲解笔记](docs/interview_notes.md)
