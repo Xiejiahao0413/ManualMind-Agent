@@ -168,3 +168,24 @@ Run PDF diagnosis examples:
 ```
 
 The PDF demo exercises text extraction, page metadata, chunk splitting, hybrid retrieval, workflow execution, and source references. Scanned PDF/OCR parsing is intentionally out of scope.
+
+## Optional LLM Report Demo
+
+The report layer uses the deterministic template formatter by default, so no API key is required for local demos.
+
+Run the fallback demo:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\demo_llm_report.py
+```
+
+To try real LLM report generation, set environment variables locally:
+
+```powershell
+$env:MANUALMIND_LLM_PROVIDER="openai"
+$env:OPENAI_API_KEY="your_api_key_here"
+$env:MANUALMIND_LLM_MODEL="gpt-4o-mini"
+.\.venv\Scripts\python.exe scripts\demo_llm_report.py
+```
+
+Do not commit `.env`, `.env.*`, or real API keys. If the provider/key is missing, the OpenAI SDK is unavailable, the request times out, or the model output is invalid, the demo falls back to the template report and continues running.

@@ -4,10 +4,10 @@ from uuid import uuid4
 
 from langgraph.graph import END, StateGraph
 
-from app.agents.reporting import build_diagnosis_report
 from app.agents.services import WorkflowToolService
 from app.core.dependencies import get_memory_manager, get_trace_manager
 from app.memory import InMemoryMemoryManager
+from app.reporting import ReportGenerationService, report_result_metadata
 from app.security import sanitize_text
 from app.schemas.diagnosis import DiagnosisRequest, DiagnosisState
 from app.schemas.trace import TraceEvent
@@ -47,6 +47,10 @@ class WorkflowState(TypedDict, total=False):
     handoff_reason: str | None
     handoff_payload: dict[str, Any] | None
     final_answer: str | None
+    llm_enabled: bool
+    llm_provider: str
+    fallback_used: bool
+    llm_error_type: str | None
 
 
 FAULT_CODE_PATTERN = re.compile(
@@ -211,12 +215,14 @@ class DiagnosisWorkflow:
         self,
         memory: InMemoryMemoryManager | None = None,
         trace_manager: InMemoryTraceManager | None = None,
+        report_service: ReportGenerationService | None = None,
     ) -> None:
         self.memory = memory or get_memory_manager()
         self.trace_manager = trace_manager or get_trace_manager()
         self.guard = ToolCallGuard(tool_whitelist=DEFAULT_TOOL_WHITELIST)
         self.router = ToolRouter(self.guard)
         self.circuit_breaker = CircuitBreaker()
+        self.report_service = report_service or ReportGenerationService()
         self.tool_service = WorkflowToolService(
             router=self.router,
             guard=self.guard,
@@ -410,7 +416,22 @@ class DiagnosisWorkflow:
             return _state_to_mapping(diagnosis_state)
 
         diagnosis_state.source_refs = sorted(set(diagnosis_state.source_refs))
-        diagnosis_state.final_answer = build_diagnosis_report(diagnosis_state)
+        report_result = await self.report_service.generate(diagnosis_state)
+        diagnosis_state.final_answer = report_result.final_answer
+        diagnosis_state.llm_enabled = report_result.llm_enabled
+        diagnosis_state.llm_provider = report_result.llm_provider
+        diagnosis_state.fallback_used = report_result.fallback_used
+        diagnosis_state.llm_error_type = report_result.error_type
+        if report_result.sanitized_fields:
+            await self.memory.append_event(
+                diagnosis_state.task_id,
+                {
+                    "event_type": "llm_output_sensitive_data_masked",
+                    "sanitized_fields": report_result.sanitized_fields,
+                    "source": "llm_report_output",
+                    "action_taken": "masked",
+                },
+            )
         diagnosis_state.workflow_events.append({"event": "safety_review_completed"})
         self._trace_event(
             diagnosis_state,
@@ -426,6 +447,7 @@ class DiagnosisWorkflow:
             "safety_report_node",
             "completed",
             "Final answer generated.",
+            report_result_metadata(report_result),
         )
         await self.memory.save_task(diagnosis_state)
         return _state_to_mapping(diagnosis_state)
@@ -517,6 +539,7 @@ def create_diagnosis_graph(workflow: DiagnosisWorkflow | None = None):
         owner.guard = ToolCallGuard(tool_whitelist=DEFAULT_TOOL_WHITELIST)
         owner.router = ToolRouter(owner.guard)
         owner.circuit_breaker = CircuitBreaker()
+        owner.report_service = ReportGenerationService()
         owner.tool_service = WorkflowToolService(
             router=owner.router,
             guard=owner.guard,

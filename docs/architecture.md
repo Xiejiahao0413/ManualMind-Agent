@@ -16,6 +16,7 @@ FastAPI stateless API
 -> MCP Tool Server
 -> Hybrid Retrieval
 -> Safety review and report generation
+-> Optional LLM Report Generation Service / template fallback
 -> SSE streaming response
 ```
 
@@ -129,6 +130,35 @@ The safety report node delegates report text construction to `build_diagnosis_re
 - troubleshooting steps
 - safety notices
 - source references
+
+## LLM Report Generation Service
+
+The report layer supports optional real LLM generation while keeping the local template formatter as the default fallback.
+
+Current flow:
+
+```text
+DiagnosisState
+-> structured sanitized report context
+-> optional LLM client
+-> output sanitization
+-> format/source validation
+-> template fallback when needed
+```
+
+Real LLM generation only runs when environment variables explicitly enable it:
+
+```text
+MANUALMIND_LLM_PROVIDER=openai
+OPENAI_API_KEY=...
+MANUALMIND_LLM_MODEL=...
+```
+
+If the provider is missing, the API key is missing, the SDK is unavailable, the request times out, the model returns an empty/invalid report, or any LLM exception occurs, the system falls back to the deterministic template report formatter.
+
+The LLM client is abstracted under `app/llm/`. Business workflow code does not call the OpenAI SDK directly. Prompt/context text and API keys are not written into trace events. LLM output is passed through the Sensitive Data Guard before it becomes `final_answer`.
+
+Handoff decisions remain outside LLM control. If a task requires human handoff, the workflow follows the handoff path and does not let a generated report override safety logic.
 
 ## Tool Control Layer
 
@@ -296,7 +326,7 @@ The repository also includes `data/eval_samples/equipment_fault_adversarial_30.j
 
 ## Current Limitations
 
-- No real LLM integration.
+- Optional real LLM report generation is implemented, with template fallback by default.
 - No real Milvus service required.
 - No production BGE embedding or rerank model loaded.
 - Text-based PDF parsing is implemented. Scanned PDF/OCR parsing is not implemented.

@@ -24,6 +24,7 @@ It demonstrates how to connect document ingestion, hybrid retrieval, controlled 
 - **Hybrid retrieval** with BM25 sparse retrieval, dense retrieval interface, metadata filters, candidate merge/dedup, and rerank abstraction.
 - **Document ingestion** for Markdown/text/text-based PDF manuals, section splitting, sensitive-data sanitization, chunk metadata, and local indexing.
 - **Sensitive data guard** for user input, tool arguments, retrieval results, and SSE streaming output.
+- **Optional real LLM report generation** with template fallback by default.
 - **Human handoff** for high-risk operations, unsafe user requests, insufficient evidence, and retry-limit failures.
 - **Trace & Evaluation** for workflow events, tool calls, retrieval evidence, fallback decisions, safety behavior, and handoff decisions.
 
@@ -33,9 +34,11 @@ It demonstrates how to connect document ingestion, hybrid retrieval, controlled 
 
 The current repository uses in-memory and mock/local components so the full demo can run on a laptop without external services.
 
+Local demos do not require an API key. Real LLM report generation is optional and only runs when explicitly enabled with environment variables; otherwise the template report formatter is used.
+
 Production extension points:
 
-- Real LLM calls
+- Production LLM deployment, governance, and model-specific prompt tuning
 - Real Milvus deployment
 - Production BGE rerank model loading
 - Scanned PDF/OCR parsing
@@ -99,6 +102,12 @@ Run the PDF manual demo:
 
 ```powershell
 .venv\Scripts\python.exe scripts\demo_pdf_manuals.py
+```
+
+Run the optional LLM report demo:
+
+```powershell
+.venv\Scripts\python.exe scripts\demo_llm_report.py
 ```
 
 Run evaluation:

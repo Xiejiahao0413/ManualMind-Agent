@@ -46,6 +46,10 @@ class DiagnosisState(BaseModel):
     handoff_reason: str | None = None
     handoff_payload: dict[str, Any] | None = None
     final_answer: str | None = None
+    llm_enabled: bool = False
+    llm_provider: str = "template"
+    fallback_used: bool = True
+    llm_error_type: str | None = None
 
 
 class DiagnosisResponse(BaseModel):
