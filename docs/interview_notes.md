@@ -1,194 +1,51 @@
-# 面试讲解笔记
+﻿# 面试讲解笔记
 
-这份笔记用于复习 ManualMind-Agent 的项目讲解，不是面向用户的产品文档。
+这份文档是给自己面试复盘用的，语气尽量接近现场口述，不是论文式项目说明。
 
-## 项目背景
+## 1. 项目一句话介绍
 
-ManualMind-Agent 是一个面向复杂设备手册的多 Agent 故障诊断系统。目标场景包括工业设备手册、故障码表、维护说明、安全规则和历史故障案例。
+ManualMind-Agent 是一个面向复杂设备手册问答和故障诊断的多 Agent 系统。它用合成设备手册做本地 demo，把文档入库、混合检索、受控工具调用、安全脱敏、Trace、Evaluation 和人工接管串成一条完整链路。
 
-项目当前用空压机 A100 的 demo 手册展示端到端流程：文档入库、混合检索、工具调用、诊断报告生成、SSE 流式输出和 Trace 查询。
+## 2. 最复杂的 Agent 工作流怎么设计
 
-## 为什么不是普通 RAG
+我把诊断拆成 Supervisor、Diagnosis、Retrieval、Safety Report、Circuit Breaker 和 Handoff 几个节点。Supervisor 负责看状态决定下一步，Diagnosis 做规则抽取，Retrieval 只能通过工具控制层查证据，Safety Report 负责安全判断和报告生成，异常循环会进熔断和人工接管。
 
-普通 RAG 往往是：
+## 3. 为什么它不是简单 RAG
 
-```text
-用户问题 -> 向量检索 -> 拼 prompt -> LLM 回答
-```
+简单 RAG 通常是“检索几个 chunk，然后拼 prompt 让模型回答”。这个项目更强调工程控制：工具不能被 Agent 直接调用，检索结果要校验，重复工具调用会复用，敏感信息会脱敏，高风险问题会触发 handoff，还能用 Trace 和 Evaluation 检查每一步是否合理。
 
-这个项目更强调工程控制：
+## 4. 如何保证工具调用可靠性
 
-- 文档先经过解析、脱敏、结构化切分和元数据构建。
-- 检索不是单一路径，而是 BM25 + dense + rerank。
-- Agent 不能直接调用工具，必须经过 Router、Guard、Retry/Fallback 和 Validator。
-- 系统记录 Tool Memory，避免重复工具调用和死循环。
-- 高风险维修场景可以触发人工接管。
-- Trace 记录每个节点和工具调用，方便排错和评测。
+工具调用必须走 Tool Router、Tool Call Guard、Retry/Fallback Manager、MCP Tool Executor 和 Validator。Guard 会检查白名单、参数 schema、敏感参数、retry_count、max tool calls 和重复签名。成功调用会记录到 Tool Memory，下次相同参数可以复用，避免死循环。
 
-可以总结为：这个项目不是“问答 demo”，而是一个带安全边界、工具控制和可观测性的诊断工作流。
+## 5. 为什么引入 MCP-style 工具层
 
-## 为什么使用多 Agent
+我没有让 Agent 直接依赖检索器或业务函数，而是做了一个 MCP-style Tool Registry 和 Executor。这样工具的输入输出 schema、错误处理、耗时、状态都能统一管理。当前是本地实现，后续如果换真实 MCP transport，边界也比较清楚。
 
-设备诊断任务不是单一生成任务，至少包含：
+## 6. 混合检索怎么做
 
-- 意图判断
-- 故障码和症状抽取
-- 手册证据检索
-- 安全规则检查
-- 报告生成
-- 熔断和人工接管
+设备手册里有很多精确信号，比如 E03、F12、型号、参数名，这些更适合 BM25；用户口语化描述，比如“机器跑一会儿就停”，更适合 dense retrieval。项目里做了 BM25、dense interface、metadata filter、chunk_id 去重和 rerank interface，默认本地跑，后续可接 Milvus 和 BGE。
 
-用 LangGraph 的 Supervisor-Worker 模式，可以把这些步骤拆成明确节点：
+## 7. 敏感信息保护怎么做
 
-- Supervisor Node 负责路由。
-- Diagnosis Node 负责结构化诊断状态。
-- Retrieval Node 负责通过工具层检索证据。
-- Safety Report Node 负责安全检查和报告生成。
-- Circuit Breaker Node 负责中止异常循环。
-- Handoff Node 负责生成人工接管 payload。
+Sensitive Data Guard 覆盖用户输入、文档入库、工具参数、检索结果和 SSE 输出。当前用 regex 和词典先识别手机号、邮箱、IP、设备编号、工单号和内部 URL。检测到后只记录类型、mask 和事件，不记录原始敏感值，避免日志里二次泄露。
 
-这样做的好处是状态流转清晰、节点职责明确、每个阶段都可以测试和 Trace。
+## 8. Streaming Output Guard 为什么需要 rolling buffer
 
-## 为什么引入 MCP
+SSE 是分块输出的，手机号、邮箱、IP 可能被拆到多个 chunk 里。如果每个 chunk 单独检测，就会漏掉。v0.2 加了 rolling buffer：先保留尾部片段，和下个 chunk 拼起来检测，只释放确认安全的 prefix，flush 时再处理剩余内容。
 
-MCP 的价值是把工具调用变成统一协议和统一边界。
+## 9. Milvus 和 memory fallback 怎么设计
 
-在当前项目中，先实现了本地 MCP-style Tool Server：
+v0.5 做的是可选 Milvus 后端，不改变默认检索链路。没有配置 Milvus、没装依赖或连接失败时，系统继续用 LocalBM25Retriever、InMemoryDenseRetriever 和 MockReranker。这样本地 demo 和 pytest 不依赖外部服务，也方便后续做真实向量库实验。
 
-- Tool Registry
-- Tool Executor
-- Tool Schemas
-- Structured ToolExecutionResult
+## 10. LLM 报告生成为什么要 fallback
 
-Agent 不直接调用检索器或函数，而是通过：
+工业诊断里报告生成不能因为模型超时或 API key 缺失就中断，所以 v0.4 在原模板报告外包了一层 ReportGenerationService。默认走模板；显式开启 OpenAI 才调用真实 LLM。LLM 失败、空输出或输出不合格时，会自动回到模板报告。
 
-```text
-Tool Intent -> Tool Router -> Tool Call Guard -> MCP Tool Executor -> Tool Result Validator -> Memory Manager
-```
+## 11. Trace 和 Evaluation 怎么做
 
-这为后续替换成真实 MCP transport 做准备，同时保留了当前测试的可运行性。
+Trace 记录节点开始结束、工具调用、检索结果、fallback、熔断和 handoff。Evaluation 用合成样本检查工具选择、故障码识别、证据覆盖、安全提醒和人工接管决策。现在有标准、对抗边界、多设备三组样本，总计 130 条，用来验证链路而不是宣称真实生产准确率。
 
-## 为什么使用混合检索
+## 12. 当前边界和后续生产化方向
 
-设备手册里有大量精确信号：
-
-- 故障码，例如 E03、F12、P001
-- 型号，例如 A100、MX100
-- 参数名，例如温度、电压、压力
-- 章节标题，例如安全注意事项、维护周期
-
-BM25 适合这些精确匹配。
-
-但用户问题经常是口语化描述，例如“机器过热停机”“压力上不去”。这类问题更适合 dense retrieval。
-
-所以项目使用：
-
-```text
-BM25 sparse retrieval
--> Dense retrieval interface
--> candidate merge and chunk_id dedup
--> rerank interface
-```
-
-当前 dense 和 rerank 是 mock/in-memory 实现，方便本地测试。后续可以替换为 Milvus、BGE embedding 和 BGE-rerank。
-
-## 如何避免 Agent 工具调用死循环
-
-主要靠 Tool Control Layer 和 Tool Memory。
-
-Tool Call Guard 检查：
-
-- 工具白名单
-- 必填参数
-- 敏感参数
-- retry_count
-- max_tool_calls_per_task
-- normalized args_signature
-- duplicate successful signature
-
-如果同一个 tool_name + normalized args 已经成功调用过，系统复用缓存结果，不重复执行工具。
-
-如果 retry_count 达到 3，或者工具调用预算超限，触发 Circuit Breaker，并进入 Handoff。
-
-## 如何做敏感信息脱敏
-
-Sensitive Data Guard 当前使用 regex + dictionary 检测：
-
-- 手机号
-- 邮箱
-- IP 地址
-- 设备编号
-- 工单号
-- 内部 URL
-- 位置关键词
-
-覆盖位置：
-
-- 用户输入
-- 文档入库
-- MCP 工具参数
-- SSE 流式输出
-
-StreamingOutputGuard 使用小 buffer，避免手机号、邮箱等敏感文本被拆成多个 chunk 后漏检。
-
-## 如何做重试、降级和人工接管
-
-RetryFallbackManager 把错误类型映射到降级动作：
-
-- Milvus 超时 -> BM25-only
-- BM25 失败 -> Dense-only
-- Rerank 失败 -> fused score
-- LLM 失败 -> template report
-- 缺少设备型号 -> clarification
-- 高风险且证据不足 -> human handoff
-- 三次失败 -> circuit breaker handoff
-
-当前项目没有接真实外部服务，但控制逻辑已经可测试。
-
-人工接管 payload 包括：
-
-- task_id
-- handoff_reason
-- risk_level
-- device_name
-- fault_code
-- symptoms
-- tool_trace
-- retrieved_sources
-
-## 如何做 Trace 和 Evaluation
-
-Trace 和 Memory 是分开的。
-
-Memory 用于运行时状态，例如 task、session、tool memory。
-
-Trace 用于观测和排错，例如：
-
-- supervisor_started / completed
-- diagnosis_completed
-- tool_call_started / completed / failed
-- retrieval_trace
-- fallback_decision
-- circuit_breaker_triggered
-- handoff_created
-- final_answer_generated
-
-Evaluation 使用当前 workflow 输出和 trace events 做基础指标：
-
-- 工具选择准确率
-- 故障码抽取准确率
-- 接管判断准确率
-- 来源覆盖率
-- 安全提醒覆盖率
-
-这让项目不只是能跑，还能被持续评测。
-
-## 面试时可以强调的亮点
-
-- 不是单纯堆 LLM，而是把 Agent 工具调用做成可控状态机。
-- FastAPI 保持 stateless，状态进入 Memory Manager。
-- 检索层可替换，当前 mock/in-memory，后续可接 Milvus 和 BGE。
-- 工具调用有白名单、参数校验、敏感信息检查、重复签名检查和熔断。
-- SSE 输出经过流式脱敏。
-- Trace 和 Evaluation 给系统可观测性和回归测试能力。
-- demo 可以本地一条命令跑通，适合展示工程闭环。
+当前项目是本地 synthetic demo，不包含真实厂家手册和生产数据。后续生产化可以补真实权限体系、持久化 memory/trace、真实 MCP 服务、Milvus 集群、生产 embedding/rerank、扫描 PDF/OCR、模型治理和安全审计。这个项目主要展示的是架构和控制链路。
