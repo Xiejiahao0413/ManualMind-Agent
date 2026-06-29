@@ -1,0 +1,81 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [4 0 R 6 0 R] /Count 2 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>
+endobj
+5 0 obj
+<< /Length 675 >>
+stream
+BT
+/F1 11 Tf
+72 760 Td
+(# Air Compressor A100 PDF Manual) Tj
+0 -18 Td
+(Synthetic demo data. Not a real manufacturer manual.) Tj
+0 -18 Td
+(Device Name: Air Compressor A100) Tj
+0 -18 Td
+(Device Model: A100) Tj
+0 -18 Td
+(# Fault Code Table) Tj
+0 -18 Td
+(E03 Temperature sensor abnormal. Possible causes include loose sensor wiring, damaged probe, blocked cooling fan, or controller sampling issue.) Tj
+0 -18 Td
+(Troubleshooting steps: disconnect power, wait for cooling, inspect sensor connector, clean cooling duct, reset controller, and replace the sensor if E03 remains.) Tj
+0 -18 Td
+(Safety reminder: do not remove the temperature sensor while powered or pressurized.) Tj
+ET
+endstream
+endobj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 7 0 R >>
+endobj
+7 0 obj
+<< /Length 601 >>
+stream
+BT
+/F1 11 Tf
+72 760 Td
+(# Technical Parameters) Tj
+0 -18 Td
+(Working temperature range: 0-80 C.) Tj
+0 -18 Td
+(Rated voltage: 380-400 V.) Tj
+0 -18 Td
+(Pressure threshold: below 0.8 MPa during startup.) Tj
+0 -18 Td
+(# Safety Rules) Tj
+0 -18 Td
+(Before maintenance, isolate power, release pressure, verify lockout, and wait until the compressor is cool.) Tj
+0 -18 Td
+(High temperature, live power, or pressurized disassembly requires human handoff.) Tj
+0 -18 Td
+(# Maintenance Flow) Tj
+0 -18 Td
+(Check filter and fan every 30 days. Record fault code, pressure, temperature, and maintenance result.) Tj
+ET
+endstream
+endobj
+xref
+0 8
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000121 00000 n 
+0000000191 00000 n 
+0000000317 00000 n 
+0000001043 00000 n 
+0000001169 00000 n 
+trailer
+<< /Size 8 /Root 1 0 R >>
+startxref
+1821
+%%EOF

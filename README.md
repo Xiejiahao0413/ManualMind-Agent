@@ -22,7 +22,7 @@ It demonstrates how to connect document ingestion, hybrid retrieval, controlled 
 - **MCP-style tool execution layer** with tool registry, executor, structured schemas, and controlled tool access.
 - **Tool control layer** with Tool Router, Tool Call Guard, retry/fallback handling, duplicate-call reuse, and circuit breaker logic.
 - **Hybrid retrieval** with BM25 sparse retrieval, dense retrieval interface, metadata filters, candidate merge/dedup, and rerank abstraction.
-- **Document ingestion** for Markdown/text manuals, section splitting, sensitive-data sanitization, chunk metadata, and local indexing.
+- **Document ingestion** for Markdown/text/text-based PDF manuals, section splitting, sensitive-data sanitization, chunk metadata, and local indexing.
 - **Sensitive data guard** for user input, tool arguments, retrieval results, and SSE streaming output.
 - **Human handoff** for high-risk operations, unsafe user requests, insufficient evidence, and retry-limit failures.
 - **Trace & Evaluation** for workflow events, tool calls, retrieval evidence, fallback decisions, safety behavior, and handoff decisions.
@@ -38,7 +38,7 @@ Production extension points:
 - Real LLM calls
 - Real Milvus deployment
 - Production BGE rerank model loading
-- PDF/OCR parsing
+- Scanned PDF/OCR parsing
 - Persistent memory and trace storage
 - Real MCP client/server transport
 - Enterprise authentication, authorization, and audit storage
@@ -53,6 +53,7 @@ Current local demo data:
 
 - `data/demo_manuals/a100_manual.md`: one focused A100 compressor manual.
 - `data/manuals/`: 10 synthetic Markdown manuals across multiple equipment types.
+- `data/pdf_manuals/`: 2 synthetic text-based PDF manuals.
 - `data/eval_samples/equipment_fault_eval_50.json`: 50 standard evaluation samples.
 - `data/eval_samples/equipment_fault_adversarial_30.json`: 30 adversarial/boundary evaluation samples.
 - `data/eval_samples/equipment_fault_multi_manuals_50.json`: 50 multi-manual evaluation samples.
@@ -92,6 +93,12 @@ Run the multi-manual demo:
 
 ```powershell
 .venv\Scripts\python.exe scripts\demo_multi_manuals.py
+```
+
+Run the PDF manual demo:
+
+```powershell
+.venv\Scripts\python.exe scripts\demo_pdf_manuals.py
 ```
 
 Run evaluation:
@@ -150,6 +157,7 @@ app/
 data/
   demo_manuals/  focused A100 demo manual
   manuals/       synthetic multi-equipment manuals
+  pdf_manuals/   synthetic text-based PDF manuals
   eval_samples/  standard, adversarial, and multi-manual eval sets
 docs/            architecture, demo, and interview notes
 scripts/         demo and evaluation scripts

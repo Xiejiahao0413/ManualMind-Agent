@@ -5,6 +5,7 @@ from app.schemas.document import ManualDocument
 
 
 FAULT_CODE_PATTERN = re.compile(r"\b(?:E|F|P)\d{2,4}\b", re.IGNORECASE)
+PAGE_MARKER_PATTERN = re.compile(r"^<!--\s*page:\s*(\d+)\s*-->$")
 HEADING_PATTERN = re.compile(r"^(#{1,6}\s+.+|[一二三四五六七八九十]+[、.].+|\d+(?:\.\d+)*\s+.+)$")
 PARAMETER_KEYWORDS = ("温度", "电压", "压力", "阈值", "维护周期", "temperature", "voltage", "pressure", "threshold")
 SAFETY_KEYWORDS = ("断电", "高温", "带压", "带电", "禁止", "警告", "安全", "lockout", "power", "pressure")
@@ -49,6 +50,14 @@ class SectionSplitter:
 
         for raw_line in text.splitlines():
             line = raw_line.strip()
+            page_match = PAGE_MARKER_PATTERN.match(line)
+            if page_match:
+                self._append_section(sections, current_title, current_lines, page)
+                page = int(page_match.group(1))
+                current_title = None
+                current_lines = []
+                continue
+
             if not line:
                 if current_lines and current_lines[-1] != "":
                     current_lines.append("")

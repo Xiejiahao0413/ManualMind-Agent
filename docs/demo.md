@@ -150,3 +150,21 @@ Run only the multi-manual evaluation set:
 ```
 
 The multi-manual set covers fault-code, symptom, parameter, safety, and handoff-style questions across 10 equipment models, and is intended to exercise metadata filtering before a real Milvus backend is connected.
+
+## PDF Manual Demo
+
+`data/pdf_manuals/` contains synthetic text-based PDF manuals. They are generated demo data, not real manufacturer manuals.
+
+Batch-index PDF manuals with:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\index_pdf_manuals.py
+```
+
+Run PDF diagnosis examples:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\demo_pdf_manuals.py
+```
+
+The PDF demo exercises text extraction, page metadata, chunk splitting, hybrid retrieval, workflow execution, and source references. Scanned PDF/OCR parsing is intentionally out of scope.

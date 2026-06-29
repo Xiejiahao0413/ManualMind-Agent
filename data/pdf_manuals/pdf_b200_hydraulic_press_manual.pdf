@@ -1,0 +1,79 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [4 0 R 6 0 R] /Count 2 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>
+endobj
+5 0 obj
+<< /Length 639 >>
+stream
+BT
+/F1 11 Tf
+72 760 Td
+(# Hydraulic Press B200 PDF Manual) Tj
+0 -18 Td
+(Synthetic demo data. Not a real manufacturer manual.) Tj
+0 -18 Td
+(Device Name: Hydraulic Press B200) Tj
+0 -18 Td
+(Device Model: B200) Tj
+0 -18 Td
+(# Fault Code Table) Tj
+0 -18 Td
+(F01 Hydraulic pressure insufficient. Possible causes include low oil level, pump wear, blocked filter, or pressure relief valve leakage.) Tj
+0 -18 Td
+(Troubleshooting steps: stop the press, release stored pressure, inspect oil level, check filter, verify pump noise, and test pressure valve.) Tj
+0 -18 Td
+(Safety reminder: do not open hydraulic lines before pressure is released.) Tj
+ET
+endstream
+endobj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 7 0 R >>
+endobj
+7 0 obj
+<< /Length 608 >>
+stream
+BT
+/F1 11 Tf
+72 760 Td
+(# Safety Rules) Tj
+0 -18 Td
+(Lock out the main power, release hydraulic pressure, support the slider mechanically, and confirm pressure gauge returns to zero.) Tj
+0 -18 Td
+(Live maintenance, pressurized disassembly, oil leakage with unstable pressure, or safety interlock failure requires human handoff.) Tj
+0 -18 Td
+(# Parameters) Tj
+0 -18 Td
+(Rated pressure range: 8-12 MPa.) Tj
+0 -18 Td
+(Oil temperature range: 20-60 C.) Tj
+0 -18 Td
+(# Maintenance Flow) Tj
+0 -18 Td
+(Inspect oil level weekly. Replace hydraulic filter every 90 days. Record pressure trend and leakage status.) Tj
+ET
+endstream
+endobj
+xref
+0 8
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000121 00000 n 
+0000000191 00000 n 
+0000000317 00000 n 
+0000001007 00000 n 
+0000001133 00000 n 
+trailer
+<< /Size 8 /Root 1 0 R >>
+startxref
+1792
+%%EOF

@@ -5,3 +5,5 @@ __pycache__/
 .mypy_cache/
 pytest-cache-files-*/
 .env
+local_data/
+private_pdfs/

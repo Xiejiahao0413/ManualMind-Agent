@@ -56,13 +56,4 @@ class TextManualParser(ManualParser):
         return content.decode("utf-8", errors="replace")
 
 
-class PDFManualParser(ManualParser):
-    def parse(
-        self,
-        content: bytes,
-        filename: str,
-        doc_id: str,
-        device_name: str | None = None,
-        device_model: str | None = None,
-    ) -> ManualDocument:
-        raise NotImplementedError("PDF parsing is reserved for a later implementation pass.")
+from app.ingestion.pdf_parser import PDFManualParser, UnsupportedPDFTypeError  # noqa: E402

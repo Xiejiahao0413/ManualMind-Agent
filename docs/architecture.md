@@ -27,7 +27,7 @@ Current path:
 
 ```text
 Manual Upload
--> TextManualParser
+-> TextManualParser / PDFManualParser
 -> Sensitive Data Guard
 -> SectionSplitter
 -> ChunkMetadataBuilder
@@ -38,8 +38,8 @@ Manual Upload
 Implemented behavior:
 
 - `POST /api/manual/upload` stores uploaded bytes in an in-memory manual store and returns a `doc_id`.
-- `POST /api/manual/index` parses txt/md files, masks sensitive values, splits sections, builds retrieval metadata, and adds chunks to the shared in-memory retriever.
-- `PDFManualParser` exists as a placeholder interface. Real PDF/OCR parsing is intentionally out of scope for the current demo.
+- `POST /api/manual/index` parses txt/md/text-based PDF files, masks sensitive values, splits sections, builds retrieval metadata, and adds chunks to the shared in-memory retriever.
+- `PDFManualParser` supports text-based PDF manuals through `pypdf`. It preserves page numbers for extracted text and returns `unsupported_pdf_type` for PDFs without extractable text. OCR and scanned PDF parsing are intentionally out of scope.
 
 Each chunk contains:
 
@@ -61,6 +61,8 @@ The repository also includes a local multi-manual corpus under `data/manuals/`.
 It contains 10 original simulated Markdown manuals for A100/B200/C300/D400/P500/G600/H800/W700/T100/K900 equipment.
 `scripts/index_manuals.py` batch-indexes these files into the current in-memory `ManualIndexer` and prints document, chunk, fault-code, and device-model counts.
 This dataset is intended for local hybrid retrieval tests and later Milvus collection experiments without using real vendor manuals.
+
+`data/pdf_manuals/` contains synthetic text-based PDF manuals for local ingestion tests. These files are generated demo data, not real manufacturer manuals. Real vendor PDFs should be kept only in local private folders such as `local_data/private_pdfs/` and must not be committed to the public repository.
 
 ## Retrieval Pipeline
 
@@ -297,6 +299,6 @@ The repository also includes `data/eval_samples/equipment_fault_adversarial_30.j
 - No real LLM integration.
 - No real Milvus service required.
 - No production BGE embedding or rerank model loaded.
-- PDF/OCR parsing is not implemented.
+- Text-based PDF parsing is implemented. Scanned PDF/OCR parsing is not implemented.
 - Memory and trace data are in-memory only.
 - MCP tools run in-process instead of through a remote MCP transport.
