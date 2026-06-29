@@ -10,6 +10,7 @@ class ManualHybridSearchRequest(BaseModel):
     query: str
     device_name: str | None = None
     device_model: str | None = None
+    doc_ids: list[str] = Field(default_factory=list)
     content_types: list[str] = Field(default_factory=list)
     top_k_bm25: int = 5
     top_k_dense: int = 5
@@ -25,6 +26,7 @@ class ManualHybridSearchResponse(BaseModel):
 class FaultCodeLookupRequest(BaseModel):
     fault_code: str
     device_model: str | None = None
+    doc_ids: list[str] = Field(default_factory=list)
 
 
 class FaultCodeLookupResponse(BaseModel):
@@ -39,6 +41,7 @@ class ParameterLookupRequest(BaseModel):
     parameter_name: str
     device_model: str | None = None
     observed_value: float | None = None
+    doc_ids: list[str] = Field(default_factory=list)
 
 
 class ParameterLookupResponse(BaseModel):
@@ -54,6 +57,7 @@ class SafetyRuleSearchRequest(BaseModel):
     operation: str
     risk_level: str = "unknown"
     device_model: str | None = None
+    doc_ids: list[str] = Field(default_factory=list)
 
 
 class SafetyRuleSearchResponse(BaseModel):
@@ -64,6 +68,7 @@ class SafetyRuleSearchResponse(BaseModel):
 
 class SourceTraceRequest(BaseModel):
     chunk_ids: list[str]
+    doc_ids: list[str] = Field(default_factory=list)
 
 
 class SourceTraceItem(BaseModel):

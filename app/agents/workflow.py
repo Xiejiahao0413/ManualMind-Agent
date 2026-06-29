@@ -24,6 +24,8 @@ class WorkflowState(TypedDict, total=False):
     sanitized_query: str | None
     sanitized_fields: list[str]
     security_events: list[dict[str, Any]]
+    doc_ids: list[str]
+    knowledge_scope: str
     device_name: str | None
     device_model: str | None
     fault_code: str | None
@@ -145,6 +147,31 @@ PARAMETER_QUERY_HINTS = (
     "standard",
     "rated",
 )
+MANUAL_QA_KEYWORDS = (
+    "怎么",
+    "如何",
+    "怎样",
+    "创建",
+    "新建",
+    "设置",
+    "配置",
+    "操作",
+    "指令",
+    "参数",
+    "步骤",
+    "流程",
+    "使用",
+    "create",
+    "new",
+    "set",
+    "configure",
+    "operate",
+    "operation",
+    "instruction",
+    "parameter",
+    "program",
+    "procedure",
+)
 
 
 def _state_from_mapping(state: WorkflowState) -> DiagnosisState:
@@ -157,6 +184,14 @@ def _state_to_mapping(state: DiagnosisState) -> WorkflowState:
 
 def _query_text(state: DiagnosisState) -> str:
     return state.raw_query or state.sanitized_query or state.user_query
+
+
+def _normalize_doc_ids(doc_id: str | None, doc_ids: list[str]) -> list[str]:
+    normalized: list[str] = []
+    for candidate in [doc_id, *doc_ids]:
+        if candidate and candidate not in normalized:
+            normalized.append(candidate)
+    return normalized
 
 
 def _fault_code_from_match(match: re.Match[str]) -> str:
@@ -174,6 +209,11 @@ def _contains_parameter_query(query: str) -> bool:
     return any(keyword.lower() in lower_query for keyword in PARAMETER_KEYWORDS) and any(
         hint.lower() in lower_query for hint in PARAMETER_QUERY_HINTS
     )
+
+
+def _contains_manual_qa_intent(query: str) -> bool:
+    lower_query = query.lower()
+    return any(keyword.lower() in lower_query for keyword in MANUAL_QA_KEYWORDS)
 
 
 def _unsafe_handoff_reason(query: str) -> str | None:
@@ -254,6 +294,7 @@ class DiagnosisWorkflow:
     def from_request(cls, request: DiagnosisRequest) -> DiagnosisState:
         sanitized = sanitize_text(request.message)
         sanitized_fields = sorted({span.replacement.strip("[]") for span in sanitized.spans})
+        doc_ids = _normalize_doc_ids(request.doc_id, request.doc_ids)
         security_events = []
         if sanitized.has_sensitive_data:
             security_events.append(
@@ -272,6 +313,8 @@ class DiagnosisWorkflow:
             sanitized_query=sanitized.sanitized_text,
             sanitized_fields=sanitized_fields,
             security_events=security_events,
+            doc_ids=doc_ids,
+            knowledge_scope="uploaded_docs" if doc_ids else "demo",
         )
 
     def supervisor_node(self, state: WorkflowState) -> WorkflowState:
@@ -335,6 +378,9 @@ class DiagnosisWorkflow:
         elif diagnosis_state.fault_code:
             diagnosis_state.risk_level = "medium"
             diagnosis_state.query_type = "fault_code"
+        elif _contains_manual_qa_intent(query):
+            diagnosis_state.risk_level = "low"
+            diagnosis_state.query_type = "manual_qa"
         elif _contains_parameter_query(query):
             diagnosis_state.risk_level = "low"
             diagnosis_state.query_type = "parameter"
@@ -400,6 +446,38 @@ class DiagnosisWorkflow:
             "started",
             "Safety report node started.",
         )
+        if diagnosis_state.knowledge_scope == "uploaded_docs" and not (
+            diagnosis_state.source_refs
+            or diagnosis_state.retrieved_chunks
+            or diagnosis_state.fault_info
+            or diagnosis_state.parameter_info
+            or diagnosis_state.safety_rules
+        ):
+            diagnosis_state.source_refs = []
+            diagnosis_state.final_answer = (
+                "未在上传手册中找到依据。请确认上传的手册是否已完成索引，"
+                "或补充设备型号、故障码、现象描述后重试。"
+            )
+            diagnosis_state.workflow_events.append({"event": "safety_review_completed"})
+            self._trace_event(
+                diagnosis_state,
+                "safety_review_completed",
+                "safety_report_node",
+                "completed",
+                "No evidence found in uploaded manual scope.",
+                {"knowledge_scope": diagnosis_state.knowledge_scope},
+            )
+            self._trace_event(
+                diagnosis_state,
+                "final_answer_generated",
+                "safety_report_node",
+                "completed",
+                "Final answer generated without uploaded manual evidence.",
+                {"provider": "template", "fallback_used": True},
+            )
+            await self.memory.save_task(diagnosis_state)
+            return _state_to_mapping(diagnosis_state)
+
         handoff_reason = _handoff_reason_for_state(diagnosis_state)
         if handoff_reason:
             diagnosis_state.handoff_required = True

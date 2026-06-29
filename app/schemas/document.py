@@ -36,6 +36,18 @@ class DocumentIndexResult(BaseModel):
     sanitized_fields: list[str] = Field(default_factory=list)
 
 
+class ManualUploadAndIndexResult(BaseModel):
+    doc_id: str
+    filename: str
+    content_type: str | None = None
+    size: int
+    upload_status: str = "received"
+    index_status: str
+    chunks_count: int = 0
+    content_type_stats: dict[str, int] = Field(default_factory=dict)
+    sanitized_fields: list[str] = Field(default_factory=list)
+
+
 def normalize_metadata(metadata: Mapping[str, Any] | None) -> dict[str, str | int | float | bool | None]:
     normalized: dict[str, str | int | float | bool | None] = {}
     for key, value in (metadata or {}).items():

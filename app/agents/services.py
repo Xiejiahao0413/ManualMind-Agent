@@ -296,24 +296,31 @@ class WorkflowToolService:
                 "query": query,
                 "device_name": state.device_name,
                 "device_model": state.device_model,
+                "doc_ids": state.doc_ids,
                 "content_types": content_types,
                 "top_k_bm25": 5,
                 "top_k_dense": 5,
                 "top_n_rerank": 5,
             }
         if tool_name == "fault_code_lookup":
-            return {"fault_code": state.fault_code or "", "device_model": state.device_model}
+            return {
+                "fault_code": state.fault_code or "",
+                "device_model": state.device_model,
+                "doc_ids": state.doc_ids,
+            }
         if tool_name == "parameter_lookup":
             return {
                 "parameter_name": self._parameter_name_from_query(query),
                 "device_model": state.device_model,
                 "observed_value": None,
+                "doc_ids": state.doc_ids,
             }
         if tool_name == "safety_rule_search":
             return {
                 "operation": query,
                 "risk_level": state.risk_level,
                 "device_model": state.device_model,
+                "doc_ids": state.doc_ids,
             }
         return {"query": query}
 
@@ -336,6 +343,7 @@ class WorkflowToolService:
             results = data.get("results") or []
             state.retrieved_chunks = results
             state.retrieved_evidence = [RetrievalResult.model_validate(result) for result in results]
+            state.source_refs.extend(self._source_refs_from_results(results))
         elif tool_name == "fault_code_lookup":
             if data.get("status") == "found":
                 state.fault_info = data
@@ -364,6 +372,20 @@ class WorkflowToolService:
                 "safety_evidence": bool(data.get("safety_rules")),
             }
         return {"source_refs": data.get("source_refs") or []}
+
+    def _source_refs_from_results(self, results: list[dict[str, Any]]) -> list[str]:
+        refs: list[str] = []
+        for result in results:
+            source_file = result.get("source_file")
+            page = result.get("page")
+            section_title = result.get("section_title")
+            if source_file and page is not None:
+                refs.append(f"{source_file}:{page}")
+            elif source_file and section_title:
+                refs.append(f"{source_file} / {section_title}")
+            elif source_file:
+                refs.append(str(source_file))
+        return refs
 
     async def _record_call(
         self,

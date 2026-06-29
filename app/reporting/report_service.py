@@ -3,7 +3,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from app.agents.reporting import build_diagnosis_report
+from app.agents.reporting import build_diagnosis_report, build_manual_qa_answer
 from app.llm import BaseLLMClient, LLMReportContext, LLMReportResult, OpenAIReportClient
 from app.schemas.diagnosis import DiagnosisState
 from app.security import sanitize_text
@@ -32,7 +32,11 @@ class ReportGenerationService:
         self.llm_client = llm_client
 
     async def generate(self, state: DiagnosisState) -> ReportGenerationResult:
-        template_report = build_diagnosis_report(state)
+        template_report = (
+            build_manual_qa_answer(state)
+            if state.query_type == "manual_qa"
+            else build_diagnosis_report(state)
+        )
         if state.handoff_required:
             return ReportGenerationResult(
                 final_answer=template_report,
@@ -40,6 +44,15 @@ class ReportGenerationService:
                 llm_provider="template",
                 fallback_used=True,
                 error_type="handoff_required",
+            )
+
+        if state.query_type == "manual_qa":
+            return ReportGenerationResult(
+                final_answer=template_report,
+                llm_enabled=False,
+                llm_provider="template",
+                fallback_used=True,
+                error_type="manual_qa_template",
             )
 
         client = self.llm_client or self._client_from_env()

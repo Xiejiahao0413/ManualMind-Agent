@@ -18,6 +18,7 @@ QUERY_TYPE_TOOL_RULES: dict[str, list[str]] = {
     "fault_code": ["fault_code_lookup", "manual_hybrid_search"],
     "parameter": ["parameter_lookup"],
     "safety": ["safety_rule_search"],
+    "manual_qa": ["manual_hybrid_search"],
     "general_fault_symptom": ["manual_hybrid_search"],
     "high_risk_operation": ["safety_rule_search", "handoff_risk_check"],
 }

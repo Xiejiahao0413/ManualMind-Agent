@@ -11,6 +11,8 @@ class DiagnosisRequest(BaseModel):
     message: str = Field(..., description="User diagnosis question.")
     task_id: str | None = Field(default=None, description="Existing diagnosis task id.")
     stream: bool = Field(default=True, description="Whether to stream response events.")
+    doc_id: str | None = Field(default=None, description="Current uploaded manual document id.")
+    doc_ids: list[str] = Field(default_factory=list, description="Uploaded manual document scope.")
 
 
 class DiagnosisState(BaseModel):
@@ -23,6 +25,8 @@ class DiagnosisState(BaseModel):
     sanitized_query: str | None = None
     sanitized_fields: list[str] = Field(default_factory=list)
     security_events: list[dict[str, Any]] = Field(default_factory=list)
+    doc_ids: list[str] = Field(default_factory=list)
+    knowledge_scope: Literal["demo", "uploaded_docs"] = "demo"
     device_name: str | None = None
     device_model: str | None = None
     fault_code: str | None = None

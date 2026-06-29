@@ -13,6 +13,43 @@ ENGLISH_TEMPLATE_SENTENCES = (
 )
 
 
+def build_manual_qa_answer(state: DiagnosisState) -> str:
+    chunks = [
+        chunk
+        for chunk in state.retrieved_chunks
+        if _clean_text(chunk.get("text") or "")
+    ]
+    if not chunks:
+        return "未在上传手册中找到依据。请确认上传的手册是否已完成索引，或补充更具体的章节、功能名称后重试。"
+
+    points: list[str] = []
+    notes: list[str] = []
+    for chunk in chunks[:3]:
+        text = _clean_text(chunk.get("text") or "")
+        extracted = _split_items(text)
+        if not extracted and text:
+            extracted = _split_sentences(text)
+        for item in extracted:
+            if _looks_like_operation_step(item):
+                points.append(item)
+            else:
+                notes.append(item)
+
+    if not points:
+        points = notes[:5]
+        notes = notes[5:]
+
+    source_refs = _manual_qa_source_refs(chunks, state.source_refs)
+
+    sections = [
+        "根据上传手册，相关操作说明如下：\n\n" + _format_numbered(points[:8]),
+    ]
+    if notes:
+        sections.append("补充说明：\n" + _format_bullets(notes[:5]))
+    sections.append("引用来源：\n" + _format_bullets(source_refs or ["暂无引用来源"]))
+    return "\n\n".join(sections)
+
+
 def build_diagnosis_report(state: DiagnosisState) -> str:
     fault_text = _fault_description(state)
     causes = _extract_section_items(fault_text, "可能原因", ("排查步骤", "安全提醒", "技术参数", "引用来源"))
@@ -153,6 +190,56 @@ def _split_items(text: str) -> list[str]:
         if line:
             items.append(line)
     return items
+
+
+def _split_sentences(text: str) -> list[str]:
+    normalized = re.sub(r"\s+", " ", text).strip()
+    parts = re.split(r"(?<=[。！？.!?])\s*|[；;]\s*", normalized)
+    return [_clean_text(part) for part in parts if _clean_text(part)]
+
+
+def _looks_like_operation_step(text: str) -> bool:
+    lower_text = text.lower()
+    operation_terms = (
+        "点击",
+        "选择",
+        "输入",
+        "设置",
+        "创建",
+        "新建",
+        "保存",
+        "确认",
+        "打开",
+        "进入",
+        "配置",
+        "执行",
+        "按",
+        "click",
+        "select",
+        "enter",
+        "set",
+        "create",
+        "save",
+        "open",
+        "configure",
+    )
+    return any(term in lower_text for term in operation_terms)
+
+
+def _manual_qa_source_refs(chunks: list[dict], fallback_refs: list[str]) -> list[str]:
+    refs: list[str] = []
+    for chunk in chunks:
+        source_file = chunk.get("source_file")
+        page = chunk.get("page")
+        section_title = chunk.get("section_title")
+        if source_file and page is not None:
+            refs.append(f"{source_file}:{page}")
+        elif source_file and section_title:
+            refs.append(f"{source_file} / {section_title}")
+        elif source_file:
+            refs.append(str(source_file))
+    refs.extend(str(source) for source in fallback_refs if source)
+    return _dedupe(refs)
 
 
 def _strip_sections(text: str, titles: tuple[str, ...]) -> str:

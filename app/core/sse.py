@@ -11,6 +11,16 @@ def format_sse(event: str, data: dict[str, object]) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
+def retrieval_debug(chunks: list[dict[str, object]]) -> dict[str, object]:
+    top_chunk = chunks[0] if chunks else {}
+    return {
+        "retrieved_chunk_count": len(chunks),
+        "top_chunk_section_title": top_chunk.get("section_title"),
+        "top_chunk_page": top_chunk.get("page"),
+        "top_chunk_text_preview": str(top_chunk.get("text") or "")[:300],
+    }
+
+
 async def diagnosis_event_stream(request: DiagnosisRequest) -> AsyncIterator[str]:
     workflow = DiagnosisWorkflow()
     state = DiagnosisWorkflow.from_request(request)
@@ -110,6 +120,7 @@ async def diagnosis_event_stream(request: DiagnosisRequest) -> AsyncIterator[str
             "trace_id": final_state.trace_id,
             "final_answer": final_state.final_answer,
             "source_refs": final_state.source_refs,
+            "retrieval_debug": retrieval_debug(final_state.retrieved_chunks),
             "sensitive_detected": bool(final_state.sanitized_fields),
             "sanitized_fields": final_state.sanitized_fields,
         },

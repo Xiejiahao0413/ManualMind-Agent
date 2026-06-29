@@ -64,8 +64,11 @@ class ManualIndexer:
             sanitized_fields=document.sanitized_fields,
         )
 
-    def list_chunks(self) -> list[DocumentChunk]:
-        return list(self._chunks)
+    def list_chunks(self, doc_ids: list[str] | set[str] | None = None) -> list[DocumentChunk]:
+        if not doc_ids:
+            return list(self._chunks)
+        scoped_doc_ids = set(doc_ids)
+        return [chunk for chunk in self._chunks if chunk.doc_id in scoped_doc_ids]
 
     def find_chunks(self, chunk_ids: set[str] | None = None) -> list[DocumentChunk]:
         if chunk_ids is None:
@@ -74,3 +77,7 @@ class ManualIndexer:
 
     def has_chunks(self) -> bool:
         return bool(self._chunks)
+
+    def has_chunks_for_docs(self, doc_ids: list[str] | set[str]) -> bool:
+        scoped_doc_ids = set(doc_ids)
+        return any(chunk.doc_id in scoped_doc_ids for chunk in self._chunks)

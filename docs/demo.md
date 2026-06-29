@@ -14,6 +14,22 @@ All demos use synthetic data. No API key, Milvus service, real LLM, or private m
 .\.venv\Scripts\python.exe scripts\run_eval.py
 ```
 
+## Web UI Demo
+
+Start the FastAPI backend:
+
+```powershell
+uvicorn app.main:app --reload
+```
+
+Start the Streamlit UI:
+
+```powershell
+streamlit run ui/app.py
+```
+
+The UI provides a lightweight product demo for manual upload and diagnosis chat. It uses the existing FastAPI backend and does not change the Agent, retrieval, LLM, or vectorstore logic.
+
 ## Demo Matrix
 
 | Command | What it validates | Expected summary |

@@ -8,3 +8,5 @@ langgraph>=0.2.0
 pypdf>=4.2.0
 openai>=1.40.0
 pymilvus>=2.4.0
+requests>=2.32.0
+streamlit>=1.36.0

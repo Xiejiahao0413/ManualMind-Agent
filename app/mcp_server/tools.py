@@ -102,7 +102,13 @@ def get_indexed_chunks() -> list[DocumentChunk]:
     return get_manual_indexer().list_chunks()
 
 
-def get_searchable_chunks() -> list[DocumentChunk]:
+def get_scoped_indexed_chunks(doc_ids: list[str] | None = None) -> list[DocumentChunk]:
+    return get_manual_indexer().list_chunks(doc_ids=doc_ids)
+
+
+def get_searchable_chunks(doc_ids: list[str] | None = None) -> list[DocumentChunk]:
+    if doc_ids:
+        return get_scoped_indexed_chunks(doc_ids)
     return [*get_indexed_chunks(), *DEMO_CHUNKS]
 
 
@@ -117,6 +123,8 @@ async def manual_hybrid_search(arguments: dict) -> ManualHybridSearchResponse:
         metadata_filter["device_name"] = request.device_name
     if request.device_model:
         metadata_filter["device_model"] = request.device_model
+    if request.doc_ids:
+        metadata_filter["doc_id"] = request.doc_ids
     if request.content_types:
         metadata_filter["content_type"] = request.content_types
 
@@ -129,7 +137,7 @@ async def manual_hybrid_search(arguments: dict) -> ManualHybridSearchResponse:
         top_k_dense=request.top_k_dense,
         top_n_rerank=request.top_n_rerank,
     )
-    if not results and indexer.has_chunks():
+    if not results and indexer.has_chunks() and not request.doc_ids:
         results = await build_demo_hybrid_retriever().search(
             request.query,
             metadata_filter=metadata_filter or None,
@@ -144,7 +152,7 @@ async def manual_hybrid_search(arguments: dict) -> ManualHybridSearchResponse:
 async def fault_code_lookup(arguments: dict) -> FaultCodeLookupResponse:
     request = FaultCodeLookupRequest.model_validate(arguments)
     fault_code = request.fault_code.upper()
-    for chunk in get_searchable_chunks():
+    for chunk in get_searchable_chunks(request.doc_ids):
         if chunk.fault_code != fault_code:
             continue
         if not matches_device_model(chunk, request.device_model):
@@ -167,7 +175,7 @@ async def parameter_lookup(arguments: dict) -> ParameterLookupResponse:
     request = ParameterLookupRequest.model_validate(arguments)
     key = request.parameter_name.lower()
     aliases = PARAMETER_ALIASES.get(key, (key, request.parameter_name))
-    for chunk in get_indexed_chunks():
+    for chunk in get_scoped_indexed_chunks(request.doc_ids):
         if chunk.content_type != "parameter":
             continue
         if not matches_device_model(chunk, request.device_model):
@@ -194,6 +202,9 @@ async def parameter_lookup(arguments: dict) -> ParameterLookupResponse:
             source_refs=[f"{chunk.source_file}:{chunk.page}"] if chunk.source_file else [],
         )
 
+    if request.doc_ids:
+        return ParameterLookupResponse(status="not_found", parameter_name=request.parameter_name)
+
     data = PARAMETER_DATA.get(key) or PARAMETER_DATA.get(request.parameter_name)
     if data is None:
         return ParameterLookupResponse(status="not_found", parameter_name=request.parameter_name)
@@ -216,7 +227,7 @@ async def safety_rule_search(arguments: dict) -> SafetyRuleSearchResponse:
     request = SafetyRuleSearchRequest.model_validate(arguments)
     rules: list[str] = []
     source_refs: list[str] = []
-    for chunk in get_searchable_chunks():
+    for chunk in get_searchable_chunks(request.doc_ids):
         if chunk.content_type != "safety_rule":
             continue
         if not matches_device_model(chunk, request.device_model):
@@ -244,7 +255,7 @@ async def source_trace(arguments: dict) -> SourceTraceResponse:
             section_title=chunk.section_title,
             content_type=chunk.content_type,
         )
-        for chunk in get_searchable_chunks()
+        for chunk in get_searchable_chunks(request.doc_ids)
         if chunk.chunk_id in requested_ids
     ]
     return SourceTraceResponse(sources=sources)
