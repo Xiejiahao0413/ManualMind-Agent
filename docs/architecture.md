@@ -15,6 +15,7 @@ FastAPI stateless API
 -> MCP Tool Executor
 -> MCP Tool Server
 -> Hybrid Retrieval
+-> Optional Vector Store Backend
 -> Safety review and report generation
 -> Optional LLM Report Generation Service / template fallback
 -> SSE streaming response
@@ -99,6 +100,49 @@ Metadata filters support:
 - `content_type`
 - `fault_code`
 - `doc_id`
+
+## Embedding And Vector Store Backends
+
+v0.5 adds optional embedding and vector store abstractions without replacing the default hybrid retrieval path.
+
+Default local retrieval remains:
+
+```text
+LocalBM25Retriever
++ InMemoryDenseRetriever
++ MockReranker
+```
+
+Optional vector path:
+
+```text
+DocumentChunk[]
+-> EmbeddingClient
+-> VectorStore
+-> VectorDenseRetriever / demo scripts
+```
+
+Embedding clients:
+
+- `MockEmbeddingClient`: deterministic local embeddings for tests and demos.
+- `OpenAIEmbeddingClient`: optional real embedding client, enabled only by environment variables and never called by tests.
+
+Vector stores:
+
+- `InMemoryVectorStore`: default fallback for local runs.
+- `MilvusVectorStore`: optional backend using `pymilvus`, imported and connected lazily.
+
+Milvus is enabled only when explicitly configured:
+
+```text
+MANUALMIND_VECTOR_BACKEND=milvus
+MANUALMIND_EMBEDDING_PROVIDER=mock
+MILVUS_URI=...
+MILVUS_TOKEN=...
+MANUALMIND_MILVUS_COLLECTION=manualmind_chunks
+```
+
+If Milvus is not configured, `pymilvus` is unavailable, or connection fails, scripts return a clear fallback status instead of breaking local demos. Metadata filters cover `device_model`, `fault_code`, `content_type`, and `source_file`.
 
 ## Multi-Agent Workflow
 
@@ -328,6 +372,7 @@ The repository also includes `data/eval_samples/equipment_fault_adversarial_30.j
 
 - Optional real LLM report generation is implemented, with template fallback by default.
 - No real Milvus service required.
+- Optional Milvus vector backend exists, but local demos use in-memory fallback by default.
 - No production BGE embedding or rerank model loaded.
 - Text-based PDF parsing is implemented. Scanned PDF/OCR parsing is not implemented.
 - Memory and trace data are in-memory only.

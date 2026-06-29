@@ -189,3 +189,32 @@ $env:MANUALMIND_LLM_MODEL="gpt-4o-mini"
 ```
 
 Do not commit `.env`, `.env.*`, or real API keys. If the provider/key is missing, the OpenAI SDK is unavailable, the request times out, or the model output is invalid, the demo falls back to the template report and continues running.
+
+## Optional Milvus / Vector Retrieval Demo
+
+Milvus is optional. Without Milvus configuration, the vector scripts use deterministic mock embeddings and an in-memory vector store.
+
+Index synthetic Markdown and PDF manuals into the configured vector backend:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\index_milvus_manuals.py
+```
+
+Run a vector retrieval demo:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\demo_milvus_retrieval.py
+```
+
+To try a real Milvus backend, set local environment variables:
+
+```powershell
+$env:MANUALMIND_VECTOR_BACKEND="milvus"
+$env:MANUALMIND_EMBEDDING_PROVIDER="mock"
+$env:MILVUS_URI="http://localhost:19530"
+$env:MILVUS_TOKEN="your_milvus_token_here"
+$env:MANUALMIND_MILVUS_COLLECTION="manualmind_chunks"
+.\.venv\Scripts\python.exe scripts\index_milvus_manuals.py
+```
+
+Real embedding APIs are optional extension points. Do not commit real API keys, Milvus tokens, or private Milvus endpoints.

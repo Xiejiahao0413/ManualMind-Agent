@@ -22,6 +22,7 @@ It demonstrates how to connect document ingestion, hybrid retrieval, controlled 
 - **MCP-style tool execution layer** with tool registry, executor, structured schemas, and controlled tool access.
 - **Tool control layer** with Tool Router, Tool Call Guard, retry/fallback handling, duplicate-call reuse, and circuit breaker logic.
 - **Hybrid retrieval** with BM25 sparse retrieval, dense retrieval interface, metadata filters, candidate merge/dedup, and rerank abstraction.
+- **Optional Milvus vector retrieval backend** with in-memory fallback by default.
 - **Document ingestion** for Markdown/text/text-based PDF manuals, section splitting, sensitive-data sanitization, chunk metadata, and local indexing.
 - **Sensitive data guard** for user input, tool arguments, retrieval results, and SSE streaming output.
 - **Optional real LLM report generation** with template fallback by default.
@@ -36,10 +37,13 @@ The current repository uses in-memory and mock/local components so the full demo
 
 Local demos do not require an API key. Real LLM report generation is optional and only runs when explicitly enabled with environment variables; otherwise the template report formatter is used.
 
+Milvus vector retrieval is also optional. Without Milvus configuration, the project keeps using local BM25, in-memory dense retrieval, and mock rerank behavior.
+
 Production extension points:
 
 - Production LLM deployment, governance, and model-specific prompt tuning
 - Real Milvus deployment
+- Production embedding provider and vector database operations
 - Production BGE rerank model loading
 - Scanned PDF/OCR parsing
 - Persistent memory and trace storage
@@ -110,6 +114,12 @@ Run the optional LLM report demo:
 .venv\Scripts\python.exe scripts\demo_llm_report.py
 ```
 
+Run the optional vector backend demo:
+
+```powershell
+.venv\Scripts\python.exe scripts\demo_milvus_retrieval.py
+```
+
 Run evaluation:
 
 ```powershell
@@ -159,6 +169,8 @@ app/
   mcp_server/    MCP-style tool schemas, registry, executor, tools
   memory/        in-memory memory manager
   retrieval/     BM25, dense retriever interface, hybrid retrieval, rerank
+  vectorstore/   optional memory/Milvus vector store backends
+  embeddings/    optional mock/OpenAI embedding clients
   schemas/       Pydantic schemas
   security/      sensitive-data detector, sanitizer, streaming guard
   tools/         tool router, guard, fallback, validator, circuit breaker

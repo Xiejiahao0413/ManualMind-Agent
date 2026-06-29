@@ -8,6 +8,7 @@ SUPPORTED_METADATA_FILTERS = {
     "content_type",
     "fault_code",
     "doc_id",
+    "source_file",
 }
 
 
