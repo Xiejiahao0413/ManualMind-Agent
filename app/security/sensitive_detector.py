@@ -62,13 +62,16 @@ class SensitiveDataDetector:
             SensitivePattern(
                 "work_order_id",
                 re.compile(
-                    r"\b(?:WO|WORKORDER)[-_]?[A-Z0-9]{4,}\b|(?:\u5de5\u5355(?:\u53f7)?[:\uff1a]?\s*)[A-Z0-9-]{4,}",
+                    r"\b(?:WO|WORKORDER)(?:[-_]?[A-Z0-9]{3,})+\b|(?:\u5de5\u5355(?:\u53f7)?[:\uff1a]?\s*)[A-Z0-9-]{4,}",
                     re.IGNORECASE,
                 ),
             ),
             SensitivePattern(
                 "device_id",
-                re.compile(r"\b(?:DEVICE|DEV|EQP|SN)(?:[-_][A-Z0-9]{3,}|[0-9][A-Z0-9]{2,})\b", re.IGNORECASE),
+                re.compile(
+                    r"\b(?:DEVICE|DEV|EQP|SN)(?:[-_][A-Z0-9]{3,}(?:[-_][A-Z0-9]{2,})*|[0-9][A-Z0-9]{2,})\b",
+                    re.IGNORECASE,
+                ),
             ),
         )
 

@@ -4,9 +4,12 @@ import re
 
 from fastapi.testclient import TestClient
 
+import app.core.sse as sse_core
 from app.core.dependencies import get_memory_manager
+from app.core.dependencies import get_trace_manager
 from app.main import app
 from app.security import StreamingOutputGuard, sanitize_text
+from app.schemas.diagnosis import DiagnosisRequest, DiagnosisState
 from app.tools import ToolCallGuard
 
 
@@ -58,6 +61,82 @@ def test_streaming_output_guard_handles_split_sensitive_text() -> None:
     assert output == "call [PHONE] now"
 
 
+def test_streaming_output_guard_masks_phone_split_across_chunks() -> None:
+    guard = StreamingOutputGuard(buffer_size=16)
+
+    output = guard.feed("phone 138") + guard.feed("1234") + guard.feed("5678 ok") + guard.flush()
+
+    assert output == "phone [PHONE] ok"
+    events = guard.pop_events()
+    assert events == [
+        {
+            "event_type": "streaming_sensitive_data_masked",
+            "sensitive_type": "phone_number",
+            "source": "sse_output",
+        }
+    ]
+    assert "13812345678" not in json.dumps(events)
+
+
+def test_streaming_output_guard_masks_email_split_across_chunks() -> None:
+    guard = StreamingOutputGuard(buffer_size=18)
+
+    output = (
+        guard.feed("email xiejiahao")
+        + guard.feed("@example")
+        + guard.feed(".com done")
+        + guard.flush()
+    )
+
+    assert output == "email [EMAIL] done"
+
+
+def test_streaming_output_guard_masks_ip_split_across_chunks() -> None:
+    guard = StreamingOutputGuard(buffer_size=12)
+
+    output = guard.feed("IP 192.168") + guard.feed(".1.10 ready") + guard.flush()
+
+    assert output == "IP [IP_ADDRESS] ready"
+
+
+def test_streaming_output_guard_masks_work_order_split_across_chunks() -> None:
+    guard = StreamingOutputGuard(buffer_size=10)
+
+    output = guard.feed("ticket WO-") + guard.feed("2026-001 ready") + guard.flush()
+
+    assert output == "ticket [WORK_ORDER_ID] ready"
+
+
+def test_streaming_output_guard_masks_device_id_split_across_chunks() -> None:
+    guard = StreamingOutputGuard(buffer_size=12)
+
+    output = guard.feed("device SN-") + guard.feed("A100-8899 alarm") + guard.flush()
+
+    assert output == "device [DEVICE_ID] alarm"
+
+
+def test_streaming_output_guard_preserves_normal_text_and_codes() -> None:
+    guard = StreamingOutputGuard(buffer_size=8)
+    text = "\u666e\u901a\u53e5\u5b50\n- A100 E03 source_refs: a100_manual.md:3\nB200 ok"
+
+    output = guard.feed(text[:12]) + guard.feed(text[12:28]) + guard.feed(text[28:]) + guard.flush()
+
+    assert output == text
+    assert "E03" in output
+    assert "A100" in output
+    assert "B200" in output
+    assert "a100_manual.md:3" in output
+    assert guard.pop_events() == []
+
+
+def test_streaming_output_guard_flush_emits_remaining_safe_text() -> None:
+    guard = StreamingOutputGuard(buffer_size=64)
+
+    output = guard.feed("safe tail text") + guard.flush()
+
+    assert output == "safe tail text"
+
+
 def test_diagnosis_chat_uses_sanitized_query() -> None:
     client = TestClient(app)
     response = client.post(
@@ -94,6 +173,76 @@ def test_diagnosis_chat_uses_sanitized_query() -> None:
     ]
     assert sensitive_events
     assert sensitive_events[0]["action_taken"] == "masked"
+
+
+def test_diagnosis_chat_streaming_output_masks_sensitive_values_and_records_event(monkeypatch) -> None:
+    task_id = "task-streaming-output-mask"
+
+    class FakeWorkflow:
+        def __init__(self) -> None:
+            self.memory = get_memory_manager()
+            self.trace_manager = get_trace_manager()
+
+        @classmethod
+        def from_request(cls, request: DiagnosisRequest) -> DiagnosisState:
+            return DiagnosisState(
+                task_id=task_id,
+                request_id="req-streaming-output-mask",
+                session_id=request.session_id,
+                user_query=request.message,
+                sanitized_query=request.message,
+            )
+
+        def ensure_trace(self, state: DiagnosisState) -> DiagnosisState:
+            if state.trace_id is None:
+                trace = self.trace_manager.start_trace(
+                    request_id=state.request_id or "req-streaming-output-mask",
+                    session_id=state.session_id,
+                    task_id=state.task_id,
+                )
+                state.trace_id = trace.trace_id
+            return state
+
+        async def run(self, state: DiagnosisState) -> DiagnosisState:
+            state.workflow_events.append({"event": "diagnosis_completed"})
+            state.final_answer = (
+                "contact 13812345678, email xiejiahao@example.com, IP 192.168.1.10, "
+                "ticket WO-2026-001, device SN-A100-8899"
+            )
+            await self.memory.save_task(state)
+            return state
+
+    monkeypatch.setattr(sse_core, "DiagnosisWorkflow", FakeWorkflow)
+
+    response = TestClient(app).post(
+        "/api/diagnosis/chat",
+        json={"session_id": "session-streaming-output-mask", "message": "safe question"},
+    )
+
+    assert response.status_code == 200
+    body = response.text
+    assert "13812345678" not in body
+    assert "xiejiahao@example.com" not in body
+    assert "192.168.1.10" not in body
+    assert "WO-2026-001" not in body
+    assert "SN-A100-8899" not in body
+    assert "[PHONE]" in body
+    assert "[EMAIL]" in body
+    assert "[IP_ADDRESS]" in body
+    assert "[WORK_ORDER_ID]" in body
+    assert "[DEVICE_ID]" in body
+
+    events = asyncio.run(get_memory_manager().list_events(task_id))
+    streaming_events = [
+        event for event in events if event.get("event_type") == "streaming_sensitive_data_masked"
+    ]
+    assert streaming_events
+    serialized_events = json.dumps(streaming_events)
+    assert "13812345678" not in serialized_events
+    assert "xiejiahao@example.com" not in serialized_events
+    assert "192.168.1.10" not in serialized_events
+    assert "WO-2026-001" not in serialized_events
+    assert "SN-A100-8899" not in serialized_events
 
 
 def test_tool_call_guard_blocks_unsanitized_sensitive_args() -> None:

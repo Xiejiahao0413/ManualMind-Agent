@@ -196,7 +196,8 @@ Coverage points:
 - tool arguments
 - SSE streaming output
 
-`StreamingOutputGuard` keeps a small buffer so split sensitive strings can still be masked before chunks leave the API boundary.
+`StreamingOutputGuard` uses a rolling buffer to prevent sensitive data leakage across SSE chunks.
+Streaming Output Guard 使用滚动缓冲机制，避免敏感信息被 SSE 分块输出绕过检测。
 
 ## Memory Manager
 

@@ -3,6 +3,7 @@ from collections.abc import AsyncIterator
 
 from app.agents import DiagnosisWorkflow
 from app.schemas.diagnosis import DiagnosisRequest
+from app.schemas.trace import TraceEvent
 from app.security import StreamingOutputGuard
 
 
@@ -16,8 +17,31 @@ async def diagnosis_event_stream(request: DiagnosisRequest) -> AsyncIterator[str
     workflow.ensure_trace(state)
     stream_guard = StreamingOutputGuard()
 
+    async def record_streaming_security_events() -> None:
+        for event in stream_guard.pop_events():
+            await workflow.memory.append_event(state.task_id, event)
+            if state.trace_id and state.request_id:
+                workflow.trace_manager.add_event(
+                    state.trace_id,
+                    TraceEvent(
+                        trace_id=state.trace_id,
+                        request_id=state.request_id,
+                        session_id=state.session_id,
+                        task_id=state.task_id,
+                        event_type=event["event_type"],
+                        component="streaming_output_guard",
+                        status="masked",
+                        message="Sensitive data was masked from SSE output.",
+                        metadata={
+                            "sensitive_type": event["sensitive_type"],
+                            "source": event["source"],
+                        },
+                    ),
+                )
+
     async def emit(event: str, data: dict[str, object]) -> AsyncIterator[str]:
         guarded = stream_guard.feed(format_sse(event, data))
+        await record_streaming_security_events()
         if guarded:
             yield guarded
 
@@ -74,6 +98,7 @@ async def diagnosis_event_stream(request: DiagnosisRequest) -> AsyncIterator[str
         ):
             yield chunk
         tail = stream_guard.flush()
+        await record_streaming_security_events()
         if tail:
             yield tail
         return
@@ -92,5 +117,6 @@ async def diagnosis_event_stream(request: DiagnosisRequest) -> AsyncIterator[str
         yield chunk
 
     tail = stream_guard.flush()
+    await record_streaming_security_events()
     if tail:
         yield tail
