@@ -1,3 +1,5 @@
+from fastapi.testclient import TestClient
+
 from app.main import app
 from app.agents import DiagnosisWorkflow, create_diagnosis_graph
 from app.memory import (
@@ -45,6 +47,15 @@ def test_app_imports() -> None:
     assert app.title == "ManualMind-Agent"
     assert DiagnosisWorkflow
     assert create_diagnosis_graph
+
+
+def test_landing_page_returns_html() -> None:
+    response = TestClient(app).get("/")
+
+    assert response.status_code == 200
+    assert "text/html" in response.headers["content-type"]
+    assert "ManualMind-Agent" in response.text
+    assert "/docs" in response.text
 
 
 def test_schema_imports() -> None:
