@@ -1,4 +1,5 @@
 from uuid import uuid4
+import re
 
 from app.core.dependencies import get_manual_indexer
 from app.mcp_server.registry import MCPTool, ToolRegistry
@@ -91,6 +92,20 @@ PARAMETER_ALIASES = {
     "maintenance_cycle": ("maintenance", "maintenance_cycle", "维护周期", "保养周期"),
 }
 
+MANUAL_QA_QUERY_TERMS = ("如何", "怎么", "怎样", "增加", "创建", "新建", "添加", "插入", "示教", "动作指令", "指令")
+ACTION_INSTRUCTION_EXPANSIONS = (
+    "创建动作指令",
+    "新增动作指令",
+    "添加动作指令",
+    "插入动作指令",
+    "示教动作指令",
+    "动作指令的创建",
+    "操作步骤",
+    "设置",
+    "确认",
+    "保存",
+)
+
 
 def build_demo_hybrid_retriever() -> HybridRetrieverImpl:
     retriever = HybridRetrieverImpl()
@@ -130,8 +145,9 @@ async def manual_hybrid_search(arguments: dict) -> ManualHybridSearchResponse:
 
     indexer = get_manual_indexer()
     retriever = indexer.retriever if indexer.has_chunks() else build_demo_hybrid_retriever()
+    search_query = expand_manual_qa_query(request.query)
     results = await retriever.search(
-        request.query,
+        search_query,
         metadata_filter=metadata_filter or None,
         top_k_bm25=request.top_k_bm25,
         top_k_dense=request.top_k_dense,
@@ -139,14 +155,18 @@ async def manual_hybrid_search(arguments: dict) -> ManualHybridSearchResponse:
     )
     if not results and indexer.has_chunks() and not request.doc_ids:
         results = await build_demo_hybrid_retriever().search(
-            request.query,
+            search_query,
             metadata_filter=metadata_filter or None,
             top_k_bm25=request.top_k_bm25,
             top_k_dense=request.top_k_dense,
             top_n_rerank=request.top_n_rerank,
         )
-    source_refs = sorted({source for result in results for source in result.source_refs})
-    return ManualHybridSearchResponse(results=results, source_refs=source_refs)
+    normalized_results = [
+        result.model_copy(update={"source_refs": source_refs_from_result(result)})
+        for result in results
+    ]
+    source_refs = normalize_source_refs([source for result in normalized_results for source in result.source_refs])
+    return ManualHybridSearchResponse(results=normalized_results, source_refs=source_refs)
 
 
 async def fault_code_lookup(arguments: dict) -> FaultCodeLookupResponse:
@@ -323,3 +343,67 @@ def create_default_tool_registry() -> ToolRegistry:
         )
     )
     return registry
+
+
+def expand_manual_qa_query(query: str) -> str:
+    if not _looks_like_manual_qa_query(query):
+        return query
+    additions = [item for item in ACTION_INSTRUCTION_EXPANSIONS if item not in query]
+    return " ".join([query, *additions])
+
+
+def _looks_like_manual_qa_query(query: str) -> bool:
+    lower_query = query.lower()
+    return any(term.lower() in lower_query for term in MANUAL_QA_QUERY_TERMS)
+
+
+def source_refs_from_result(result) -> list[str]:
+    source_file = result.source_file
+    page = result.page
+    section_title = result.section_title
+    if source_file and page is not None:
+        return [f"{source_file}:{page}"]
+    if source_file and section_title and not _is_page_number_title(section_title):
+        return [f"{source_file} / {section_title}"]
+    if source_file:
+        return [str(source_file)]
+    return []
+
+
+def normalize_source_refs(source_refs: list[str]) -> list[str]:
+    page_refs: dict[tuple[str, int], str] = {}
+    section_refs: set[str] = set()
+    bare_refs: set[str] = set()
+    files_with_specific_refs: set[str] = set()
+
+    for source in source_refs:
+        if not source:
+            continue
+        page_match = re.match(r"^(?P<file>.+):(?P<page>\d+)$", source)
+        if page_match:
+            filename = page_match.group("file")
+            page = int(page_match.group("page"))
+            page_refs[(filename, page)] = source
+            files_with_specific_refs.add(filename)
+            continue
+
+        if " / " in source:
+            filename, section = source.split(" / ", 1)
+            if section and not _is_page_number_title(section):
+                section_refs.add(source)
+                files_with_specific_refs.add(filename)
+            continue
+
+        bare_refs.add(source)
+
+    ordered = [
+        page_refs[key]
+        for key in sorted(page_refs, key=lambda item: (item[0], item[1]))
+    ]
+    ordered.extend(sorted(section_refs))
+    ordered.extend(sorted(source for source in bare_refs if source not in files_with_specific_refs))
+    return ordered
+
+
+def _is_page_number_title(title: str) -> bool:
+    return bool(re.match(r"^(?:\d+\s*/\s*\d+|\d+|第\s*\d+\s*页|page\s*\d+)(?:\s*/\s*\d+)?$", title.strip(), re.IGNORECASE))

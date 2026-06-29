@@ -36,6 +36,23 @@ ACTION_MANUAL = """# 创建动作指令
 动作指令保存后，可在程序列表中查看和编辑。
 """.encode("utf-8")
 
+MANUAL_QA_QUALITY_MANUAL = """<!-- page: 10 -->
+# 动作指令定义
+动作指令是机器人程序中用于描述运动目标和执行条件的语句，由动作类型、位置、速度等信息构成。
+
+<!-- page: 12 -->
+# 创建动作指令步骤
+1. 进入程序编辑界面。
+2. 点击“增加指令”。
+3. 选择“动作指令”。
+4. 设置目标点、速度和等待条件。
+5. 点击“确认”保存动作指令。
+
+<!-- page: 13 -->
+# 动作附加指令说明
+动作附加指令用于补充速度、等待、输出等附加条件。
+""".encode("utf-8")
+
 
 def _sse_events(response_text: str) -> list[dict]:
     events: list[dict] = []
@@ -159,6 +176,43 @@ def test_operation_manual_question_uses_manual_qa_answer() -> None:
     assert "设置速度" in final_answer
     assert any("action-command-manual.txt" in source for source in final_event["data"]["source_refs"])
     assert all("mx100_manual.pdf" not in source for source in final_event["data"]["source_refs"])
+
+
+def test_manual_qa_prefers_procedure_steps_over_definition() -> None:
+    client = TestClient(app)
+    upload = _upload_and_index(client, "manual-qa-quality.txt", MANUAL_QA_QUALITY_MANUAL)
+
+    response = client.post(
+        "/api/diagnosis/chat",
+        json={
+            "session_id": "test-manual-qa-quality",
+            "message": "如何增加动作指令",
+            "doc_id": upload["doc_id"],
+            "doc_ids": [upload["doc_id"]],
+            "stream": True,
+        },
+    )
+
+    assert response.status_code == 200
+    events = _sse_events(response.text)
+    diagnosis_event = [event for event in events if event["event"] == "diagnosis_completed"][-1]
+    final_event = [event for event in events if event["event"] == "final_answer"][-1]
+    final_answer = final_event["data"]["final_answer"]
+    source_refs = final_event["data"]["source_refs"]
+
+    assert diagnosis_event["data"]["query_type"] == "manual_qa"
+    assert "点击“增加指令”" in final_answer
+    assert "选择“动作指令”" in final_answer
+    assert "设置目标点" in final_answer
+    assert "故障识别" not in final_answer
+    assert "可能原因" not in final_answer
+    assert "未识别到明确故障码" not in final_answer
+    if "动作指令是机器人程序" in final_answer:
+        assert final_answer.index("点击“增加指令”") < final_answer.index("动作指令是机器人程序")
+    assert source_refs
+    assert all(source.startswith("manual-qa-quality.txt:") for source in source_refs)
+    assert "manual-qa-quality.txt" not in source_refs
+    assert all("mx100_manual.pdf" not in source for source in source_refs)
 
 
 def test_without_uploaded_document_demo_fallback_is_preserved(monkeypatch) -> None:

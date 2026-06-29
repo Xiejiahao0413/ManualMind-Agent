@@ -5,6 +5,10 @@ from app.schemas.document import ManualDocument
 
 
 FAULT_CODE_PATTERN = re.compile(r"\b(?:E|F|P)\d{2,4}\b", re.IGNORECASE)
+PAGE_NUMBER_HEADING_PATTERN = re.compile(
+    r"^(?:\d+\s*/\s*\d+|\d+|第\s*\d+\s*页|page\s*\d+)(?:\s*/\s*\d+)?$",
+    re.IGNORECASE,
+)
 PAGE_MARKER_PATTERN = re.compile(r"^<!--\s*page:\s*(\d+)\s*-->$")
 HEADING_PATTERN = re.compile(r"^(#{1,6}\s+.+|[一二三四五六七八九十]+[、.].+|\d+(?:\.\d+)*\s+.+)$")
 PARAMETER_KEYWORDS = ("温度", "电压", "压力", "阈值", "维护周期", "temperature", "voltage", "pressure", "threshold")
@@ -63,6 +67,9 @@ class SectionSplitter:
                     current_lines.append("")
                 continue
 
+            if self._is_page_number_heading(line):
+                continue
+
             if self._is_heading(line):
                 self._append_section(sections, current_title, current_lines, page)
                 current_title = self._clean_heading(line)
@@ -75,9 +82,14 @@ class SectionSplitter:
         return sections
 
     def _is_heading(self, line: str) -> bool:
+        if self._is_page_number_heading(line):
+            return False
         if HEADING_PATTERN.match(line):
             return len(line) <= 80
         return False
+
+    def _is_page_number_heading(self, line: str) -> bool:
+        return bool(PAGE_NUMBER_HEADING_PATTERN.match(line.strip()))
 
     def _clean_heading(self, line: str) -> str:
         return re.sub(r"^#{1,6}\s*", "", line).strip()

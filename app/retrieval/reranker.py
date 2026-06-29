@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 
-from app.retrieval.bm25 import tokenize_text
+from app.retrieval.bm25 import is_procedure_query, procedure_score_multiplier, tokenize_text
 from app.schemas.retrieval import RetrievalResult
 
 
@@ -34,5 +34,7 @@ class MockReranker(Reranker):
             candidate_tokens = set(tokenize_text(candidate.text))
             overlap = len(query_tokens & candidate_tokens)
             rerank_score = float(overlap) + candidate.score
+            if is_procedure_query(query):
+                rerank_score *= procedure_score_multiplier(query, candidate)
             reranked.append(candidate.model_copy(update={"rerank_score": rerank_score}))
         return sorted(reranked, key=lambda result: result.rerank_score or 0.0, reverse=True)[:top_n]

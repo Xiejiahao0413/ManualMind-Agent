@@ -1,6 +1,7 @@
 from typing import Any
 
 from app.mcp_server import MCPToolExecutor, create_default_tool_registry
+from app.mcp_server.tools import normalize_source_refs
 from app.memory import InMemoryMemoryManager
 from app.schemas.diagnosis import DiagnosisState
 from app.schemas.retrieval import RetrievalResult
@@ -263,7 +264,7 @@ class WorkflowToolService:
                 record.result_summary,
             )
 
-        state.source_refs = sorted(set(state.source_refs))
+        state.source_refs = normalize_source_refs(state.source_refs)
         if state.handoff_required:
             state.retrieval_status = "handoff_required"
         elif state.source_refs or state.retrieved_chunks or state.fault_info or state.parameter_info:
