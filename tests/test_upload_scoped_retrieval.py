@@ -5,9 +5,11 @@ from fastapi.testclient import TestClient
 
 from app.core.dependencies import get_manual_indexer
 from app.ingestion import ManualIndexer
+from app.agents.reporting import build_manual_qa_answer
 from app.main import app
 from app.mcp_server import MCPToolExecutor, create_default_tool_registry
 from app.mcp_server import tools as mcp_tools
+from app.schemas.diagnosis import DiagnosisState
 
 
 SCOPED_MANUAL = b"""# Fault Codes
@@ -213,6 +215,60 @@ def test_manual_qa_prefers_procedure_steps_over_definition() -> None:
     assert all(source.startswith("manual-qa-quality.txt:") for source in source_refs)
     assert "manual-qa-quality.txt" not in source_refs
     assert all("mx100_manual.pdf" not in source for source in source_refs)
+
+
+def test_manual_qa_formatter_cleans_pdf_line_breaks_and_figure_noise() -> None:
+    state = DiagnosisState(
+        task_id="task-manual-qa-format",
+        session_id="session-manual-qa-format",
+        user_query="如何增加动作指令",
+        query_type="manual_qa",
+        retrieved_chunks=[
+            {
+                "chunk_id": "chunk-page-160",
+                "doc_id": "robot-manual",
+                "source_file": "robot_manual.pdf",
+                "page": 160,
+                "section_title": "4.1.5 创建动作指令",
+                "score": 10.0,
+                "text": (
+                    "插入动作指令步骤如下：\n"
+                    "在程序操作界面点击选中需要插入程序位置的程序行，程序行数字前会有光标显\n"
+                    "示。\n"
+                    "图4.12 笔型光标\n"
+                    "点击程序操作界面的“插入指令”进入指令选择界面。\n"
+                    "图 4.13 指令选择窗口\n"
+                    "指令选择窗口\n"
+                    "选择需要的运动指令，例如 Move Line。\n"
+                    "进入运动指令编辑界面后，根据实际情况修改运动指令内容。\n"
+                    "如图4.14所示"
+                ),
+            },
+            {
+                "chunk_id": "chunk-page-161",
+                "doc_id": "robot-manual",
+                "source_file": "robot_manual.pdf",
+                "page": 161,
+                "section_title": "动作指令定义",
+                "score": 2.0,
+                "text": "动作指令是机器人程序中用于描述运动目标和执行条件的语句。",
+            },
+        ],
+        source_refs=["robot_manual.pdf", "robot_manual.pdf:160"],
+    )
+
+    answer = build_manual_qa_answer(state)
+
+    assert "根据上传手册，操作步骤如下" in answer
+    assert "1. 插入动作指令步骤如下" not in answer
+    assert "程序行数字前会有光标显示" in answer
+    assert "如所示" not in answer
+    assert "图4.12" not in answer
+    assert "图 4.13" not in answer
+    assert "指令选择窗口" not in answer
+    assert "robot_manual.pdf:160" in answer
+    assert "robot_manual.pdf:161" not in answer
+    assert "- robot_manual.pdf\n" not in answer
 
 
 def test_without_uploaded_document_demo_fallback_is_preserved(monkeypatch) -> None:

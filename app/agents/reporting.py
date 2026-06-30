@@ -453,6 +453,238 @@ def _manual_qa_source_refs(chunks: list[dict], fallback_refs: list[str]) -> list
     return normalize_source_refs(refs)
 
 
+# Final manual QA formatter override. Keep this scoped to manual_qa so fault diagnosis
+# reports continue to use the original diagnosis formatter above.
+MANUAL_QA_ACTION_TERMS = (
+    "点击",
+    "选择",
+    "进入",
+    "设置",
+    "创建",
+    "新建",
+    "增加",
+    "添加",
+    "插入",
+    "示教",
+    "确认",
+    "保存",
+    "修改",
+    "选中",
+    "click",
+    "select",
+    "enter",
+    "set",
+    "create",
+    "add",
+    "insert",
+    "teach",
+    "confirm",
+    "save",
+)
+MANUAL_QA_DEFINITION_TERMS = ("定义", "构成", "是指", "如下信息构成", "包括以下信息", "用于描述")
+MANUAL_QA_NOISE_TITLES = {"指令选择窗口", "笔型光标", "程序编辑语句界面"}
+
+
+def build_manual_qa_answer(state: DiagnosisState) -> str:
+    chunks = sorted(
+        [
+            chunk
+            for chunk in state.retrieved_chunks
+            if _manual_qa_clean_text(chunk.get("text") or "")
+        ],
+        key=lambda chunk: _manual_qa_chunk_score_v2(state, chunk),
+        reverse=True,
+    )
+    if not chunks:
+        return "未在上传手册中找到依据。请确认上传的手册是否已完成索引，或补充更具体的章节、功能名称后重试。"
+
+    primary_chunk = chunks[0]
+    steps = _manual_qa_extract_steps(primary_chunk.get("text") or "")
+    used_chunks = [primary_chunk]
+    notes: list[str] = []
+
+    if steps:
+        heading = "根据上传手册，操作步骤如下："
+        answer_items = steps[:8]
+        if len(answer_items) < 3:
+            for chunk in chunks[1:2]:
+                extra_steps = _manual_qa_extract_steps(chunk.get("text") or "")
+                if extra_steps:
+                    answer_items.extend(extra_steps[: 4 - len(answer_items)])
+                    used_chunks.append(chunk)
+                    break
+    else:
+        heading = "手册中未检索到完整创建步骤，但找到相关说明："
+        answer_items = _manual_qa_extract_related_items(primary_chunk.get("text") or "")[:5]
+
+    if steps:
+        for chunk in chunks[1:2]:
+            related = _manual_qa_extract_related_items(chunk.get("text") or "")
+            related = [item for item in related if not _manual_qa_is_definition_like(item)]
+            if related:
+                notes = related[:2]
+                used_chunks.append(chunk)
+                break
+
+    source_refs = _manual_qa_source_refs_v2(used_chunks, state.source_refs if len(used_chunks) > 1 else [])
+    sections = [heading + "\n\n" + _format_numbered(answer_items)]
+    if notes:
+        sections.append("补充说明：\n" + _format_bullets(notes[:2]))
+    sections.append("引用来源：\n" + _format_bullets(source_refs or ["暂无引用来源"]))
+    return "\n\n".join(sections)
+
+
+def _manual_qa_chunk_score_v2(state: DiagnosisState, chunk: dict) -> float:
+    text = _manual_qa_clean_text(f"{chunk.get('section_title') or ''}\n{chunk.get('text') or ''}")
+    query = (state.raw_query or state.sanitized_query or state.user_query or "").lower()
+    score = float(chunk.get("rerank_score") or chunk.get("score") or 0.0)
+    score += sum(0.5 for term in _manual_qa_query_terms(query) if term and term in text.lower())
+    action_hits = sum(1 for term in MANUAL_QA_ACTION_TERMS if term.lower() in text.lower())
+    definition_hits = sum(1 for term in MANUAL_QA_DEFINITION_TERMS if term.lower() in text.lower())
+    if action_hits:
+        score += 4.0 + min(action_hits, 4)
+    if _manual_qa_has_numbered_steps(text):
+        score += 2.0
+    if definition_hits and action_hits == 0:
+        score -= 5.0
+    elif definition_hits:
+        score -= 1.0
+    return score
+
+
+def _manual_qa_clean_text(text: Any) -> str:
+    merged = _manual_qa_merge_pdf_lines(str(text))
+    cleaned_lines: list[str] = []
+    for raw_line in merged.splitlines():
+        line = _clean_text(raw_line)
+        line = re.sub(r"图\s*\d+(?:\.\d+)*\s*[\u4e00-\u9fffA-Za-z0-9_-]*", "", line).strip()
+        line = re.sub(r"如\s*(?:下)?图\s*所示", "", line).strip()
+        line = re.sub(r"如\s*所示", "", line).strip()
+        if not line or _manual_qa_is_noise_line(line):
+            continue
+        cleaned_lines.append(line)
+    return "\n".join(cleaned_lines)
+
+
+def _manual_qa_merge_pdf_lines(text: str) -> str:
+    lines = [line.strip() for line in text.replace("\r\n", "\n").replace("\r", "\n").splitlines()]
+    merged: list[str] = []
+    sentence_end = tuple("。！？!?；;：:")
+    list_start_pattern = re.compile(r"^(?:\d+[.、)]|[（(]\d+[）)]|[-*])\s*")
+
+    for line in lines:
+        if not line:
+            continue
+        if not merged:
+            merged.append(line)
+            continue
+        previous = merged[-1]
+        if list_start_pattern.match(line):
+            merged.append(line)
+            continue
+        if previous.endswith(sentence_end):
+            merged.append(line)
+            continue
+        if _manual_qa_is_noise_line(previous) or _manual_qa_is_noise_line(line):
+            merged.append(line)
+            continue
+        joiner = "" if _manual_qa_should_join_without_space(previous, line) else " "
+        merged[-1] = previous + joiner + line
+    return "\n".join(merged)
+
+
+def _manual_qa_should_join_without_space(previous: str, current: str) -> bool:
+    if not previous or not current:
+        return True
+    if "\u4e00" <= previous[-1] <= "\u9fff" or "\u4e00" <= current[0] <= "\u9fff":
+        return True
+    if previous[-1].isalnum() and current[0].isalnum() and (len(current) <= 3 or len(previous) <= 3):
+        return True
+    return False
+
+
+def _manual_qa_extract_steps(text: Any) -> list[str]:
+    cleaned = _manual_qa_clean_text(text)
+    candidates = _split_items(cleaned) or _split_sentences(cleaned)
+    steps: list[str] = []
+    for candidate in candidates:
+        item = _manual_qa_normalize_item(candidate)
+        if not item or _manual_qa_is_step_heading(item) or _manual_qa_is_noise_line(item):
+            continue
+        if _manual_qa_is_operation_step(item):
+            steps.append(item)
+    return _dedupe(steps)
+
+
+def _manual_qa_extract_related_items(text: Any) -> list[str]:
+    cleaned = _manual_qa_clean_text(text)
+    candidates = _split_items(cleaned) or _split_sentences(cleaned)
+    result: list[str] = []
+    for candidate in candidates:
+        item = _manual_qa_normalize_item(candidate)
+        if not item or _manual_qa_is_step_heading(item) or _manual_qa_is_noise_line(item):
+            continue
+        if len(item) >= 6:
+            result.append(item)
+    return _dedupe(result)
+
+
+def _manual_qa_normalize_item(text: str) -> str:
+    item = _clean_text(text)
+    item = re.sub(r"^\s*(?:\d+[.、)]|[（(]\d+[）)]|[-*])\s*", "", item)
+    item = re.sub(r"图\s*\d+(?:\.\d+)*", "", item).strip()
+    item = re.sub(r"如\s*所示", "", item).strip()
+    return item
+
+
+def _manual_qa_is_operation_step(text: str) -> bool:
+    lower_text = text.lower()
+    return any(term.lower() in lower_text for term in MANUAL_QA_ACTION_TERMS)
+
+
+def _manual_qa_is_definition_like(text: str) -> bool:
+    lower_text = text.lower()
+    return any(term.lower() in lower_text for term in MANUAL_QA_DEFINITION_TERMS)
+
+
+def _manual_qa_is_step_heading(text: str) -> bool:
+    cleaned = _clean_text(text)
+    return bool(re.search(r"(步骤如下|操作步骤|方法如下|流程如下)[:：]?$", cleaned))
+
+
+def _manual_qa_is_noise_line(text: str) -> bool:
+    cleaned = _clean_text(text)
+    if cleaned in MANUAL_QA_NOISE_TITLES:
+        return True
+    if re.match(r"^(?:图\s*\d+(?:\.\d+)*.*|图|指令选择窗口|\d+\s*/\s*\d+|第\s*\d+\s*页|page\s*\d+)$", cleaned, re.IGNORECASE):
+        return True
+    return cleaned in {"如所示", "如下图所示", "如图所示"}
+
+
+def _manual_qa_has_numbered_steps(text: str) -> bool:
+    return bool(re.search(r"(^|\n)\s*(?:\d+[.、)]|[（(]\d+[）)])", text))
+
+
+def _manual_qa_source_refs_v2(chunks: list[dict], fallback_refs: list[str]) -> list[str]:
+    refs: list[str] = []
+    for chunk in chunks:
+        source_file = chunk.get("source_file")
+        page = chunk.get("page")
+        section_title = chunk.get("section_title")
+        if source_file and page is not None:
+            refs.append(f"{source_file}:{page}")
+        elif source_file and section_title and not _manual_qa_is_page_title(str(section_title)):
+            refs.append(f"{source_file} / {section_title}")
+        elif source_file:
+            refs.append(str(source_file))
+    refs.extend(str(ref) for ref in fallback_refs if ref)
+    return normalize_source_refs(refs)
+
+
+def _manual_qa_is_page_title(title: str) -> bool:
+    return bool(re.match(r"^(?:\d+\s*/\s*\d+|\d+|第\s*\d+\s*页|page\s*\d+)(?:\s*/\s*\d+)?$", title.strip(), re.IGNORECASE))
+
+
 def _is_page_number_title(title: str) -> bool:
     return bool(
         re.match(
