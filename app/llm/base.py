@@ -21,7 +21,9 @@ class LLMReportResult:
     success: bool
     text: str = ""
     provider: str = "template"
+    model: str | None = None
     error_type: str | None = None
+    error_message: str | None = None
     fallback_required: bool = False
 
 

@@ -51,8 +51,12 @@ class WorkflowState(TypedDict, total=False):
     final_answer: str | None
     llm_enabled: bool
     llm_provider: str
+    llm_model: str | None
+    llm_used: bool
     fallback_used: bool
+    fallback_reason: str | None
     llm_error_type: str | None
+    llm_error_message_preview: str | None
 
 
 FAULT_CODE_PATTERN = re.compile(
@@ -498,8 +502,12 @@ class DiagnosisWorkflow:
         diagnosis_state.final_answer = report_result.final_answer
         diagnosis_state.llm_enabled = report_result.llm_enabled
         diagnosis_state.llm_provider = report_result.llm_provider
+        diagnosis_state.llm_model = report_result.llm_model
+        diagnosis_state.llm_used = report_result.llm_used
         diagnosis_state.fallback_used = report_result.fallback_used
+        diagnosis_state.fallback_reason = report_result.fallback_reason
         diagnosis_state.llm_error_type = report_result.error_type
+        diagnosis_state.llm_error_message_preview = report_result.error_message_preview
         if report_result.sanitized_fields:
             await self.memory.append_event(
                 diagnosis_state.task_id,

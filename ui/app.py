@@ -12,9 +12,12 @@ REQUEST_TIMEOUT_SECONDS = 120
 
 def build_endpoint_candidates(base_url: str, path: str) -> list[str]:
     normalized_base = base_url.rstrip("/")
+    normalized_path = path if path.startswith("/") else f"/{path}"
+    if normalized_path.startswith("/api/"):
+        return [f"{normalized_base}{normalized_path}"]
     return [
-        f"{normalized_base}{path}",
-        f"{normalized_base}/api{path}",
+        f"{normalized_base}{normalized_path}",
+        f"{normalized_base}/api{normalized_path}",
     ]
 
 
@@ -46,6 +49,10 @@ def post_with_api_fallback(
         raise last_error
 
     raise RuntimeError("No endpoint candidate was attempted.")
+
+
+def response_text_preview(response: requests.Response, limit: int = 1000) -> str:
+    return response.text[:limit]
 
 
 def parse_sse_events(raw_text: str) -> list[dict[str, Any]]:
@@ -106,7 +113,7 @@ st.caption("Multi-Agent Equipment Fault Diagnosis System Demo")
 backend_url = st.sidebar.text_input(
     "FastAPI backend URL",
     value=DEFAULT_BACKEND_URL,
-    help="The UI will try /manual/upload and /diagnosis/chat first, then fall back to /api/... for the current backend.",
+    help="The UI uses /api/manual/upload-and-index and /api/diagnosis/chat for the current backend.",
 )
 
 st.info(
@@ -141,19 +148,28 @@ with upload_section:
         if uploaded_file is None:
             st.error("Please select a PDF or TXT file first.")
         else:
+            upload_url = f"{backend_url.rstrip('/')}/api/manual/upload-and-index"
+            upload_url_candidates = [upload_url]
+            st.caption(f"Upload URL: {upload_url}")
+            with st.expander("Upload debug", expanded=False):
+                st.write("Upload URL candidates")
+                st.code("\n".join(upload_url_candidates))
             with st.spinner("Uploading manual..."):
                 try:
+                    uploaded_file.seek(0)
+                    file_bytes = uploaded_file.getvalue()
                     files = {
                         "file": (
                             uploaded_file.name,
-                            uploaded_file.getvalue(),
+                            file_bytes,
                             uploaded_file.type or "application/octet-stream",
                         )
                     }
-                    response, request_url = post_with_api_fallback(
-                        backend_url,
-                        "/manual/upload-and-index",
+                    request_url = upload_url
+                    response = requests.post(
+                        upload_url,
                         files=files,
+                        timeout=REQUEST_TIMEOUT_SECONDS,
                     )
                     if response.ok:
                         upload_result = response.json()
@@ -163,11 +179,34 @@ with upload_section:
                         st.session_state["indexed"] = upload_result.get("index_status") == "indexed"
                         st.success(f"Upload and index succeeded via {request_url}")
                     else:
-                        st.error(f"Upload failed: {response.status_code} {response.text}")
+                        st.error("Upload failed.")
+                        st.json(
+                            {
+                                "upload_url": request_url,
+                                "status_code": response.status_code,
+                                "response_text_preview": response_text_preview(response),
+                            }
+                        )
                 except requests.RequestException as exc:
-                    st.error(f"Upload request failed: {exc}")
+                    st.error("Upload request failed.")
+                    st.json(
+                        {
+                            "upload_url": upload_url,
+                            "upload_url_candidates": upload_url_candidates,
+                            "exception_type": type(exc).__name__,
+                            "exception_message": str(exc),
+                        }
+                    )
                 except ValueError:
                     st.error("Upload response was not valid JSON.")
+                    if request_url is not None:
+                        st.json(
+                            {
+                                "upload_url": request_url,
+                                "status_code": response.status_code,
+                                "response_text_preview": response_text_preview(response),
+                            }
+                        )
 
 with qa_section:
     st.header("Diagnosis Chat")
@@ -202,7 +241,7 @@ with qa_section:
                         payload["doc_ids"] = [st.session_state["current_doc_id"]]
                     response, request_url = post_with_api_fallback(
                         backend_url,
-                        "/diagnosis/chat",
+                        "/api/diagnosis/chat",
                         json=payload,
                     )
                     if not response.ok:

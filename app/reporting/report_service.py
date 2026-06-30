@@ -17,8 +17,12 @@ class ReportGenerationResult:
     final_answer: str
     llm_enabled: bool
     llm_provider: str
-    fallback_used: bool
+    llm_model: str | None = None
+    llm_used: bool = False
+    fallback_used: bool = True
+    fallback_reason: str | None = None
     error_type: str | None = None
+    error_message_preview: str | None = None
     sanitized_fields: list[str] | None = None
 
 
@@ -32,6 +36,7 @@ class ReportGenerationService:
         self.llm_client = llm_client
 
     async def generate(self, state: DiagnosisState) -> ReportGenerationResult:
+        env_debug = self._env_debug()
         template_report = (
             build_manual_qa_answer(state)
             if state.query_type == "manual_qa"
@@ -42,28 +47,49 @@ class ReportGenerationService:
                 final_answer=template_report,
                 llm_enabled=False,
                 llm_provider="template",
+                llm_model=env_debug["llm_model"],
+                llm_used=False,
                 fallback_used=True,
+                fallback_reason="handoff_required",
                 error_type="handoff_required",
             )
 
         client = self.llm_client or self._client_from_env()
         if client is None:
+            fallback_reason = self._no_client_reason(env_debug)
             return ReportGenerationResult(
                 final_answer=template_report,
                 llm_enabled=False,
                 llm_provider="template",
+                llm_model=env_debug["llm_model"],
+                llm_used=False,
                 fallback_used=True,
+                fallback_reason=fallback_reason,
                 error_type="llm_disabled",
             )
 
         context = self._build_context(state)
+        provider = getattr(client, "provider", "unknown")
+        model = getattr(client, "model", None) or env_debug["llm_model"]
         try:
             llm_result = await client.generate_report(context)
-        except Exception:
-            return self._fallback(template_report, getattr(client, "provider", "unknown"), "llm_exception")
+        except Exception as exc:
+            return self._fallback(
+                template_report,
+                provider,
+                "llm_exception",
+                model=model,
+                error_message=str(exc),
+            )
 
         if not llm_result.success or llm_result.fallback_required:
-            return self._fallback(template_report, llm_result.provider, llm_result.error_type or "llm_failed")
+            return self._fallback(
+                template_report,
+                llm_result.provider,
+                llm_result.error_type or "llm_failed",
+                model=llm_result.model or model,
+                error_message=llm_result.error_message,
+            )
 
         sanitized = sanitize_text(llm_result.text)
         final_answer = self._ensure_source_refs(
@@ -71,15 +97,49 @@ class ReportGenerationService:
             state.source_refs,
         )
         if not self._is_valid_report(final_answer, state.source_refs, state.query_type):
-            return self._fallback(template_report, llm_result.provider, "invalid_report_format")
+            return self._fallback(
+                template_report,
+                llm_result.provider,
+                "invalid_report_format",
+                model=llm_result.model or model,
+                fallback_reason="invalid_llm_output",
+            )
 
         return ReportGenerationResult(
             final_answer=final_answer,
             llm_enabled=True,
             llm_provider=llm_result.provider,
+            llm_model=llm_result.model or model,
+            llm_used=True,
             fallback_used=False,
+            fallback_reason=None,
             sanitized_fields=sorted({span.replacement.strip("[]") for span in sanitized.spans}),
         )
+
+    def _env_debug(self) -> dict[str, Any]:
+        llm_enabled = self.env.get("LLM_ENABLED", "").lower().strip() in {"true", "1", "yes", "on"}
+        provider = (self.env.get("LLM_PROVIDER") or self.env.get("MANUALMIND_LLM_PROVIDER") or "").lower().strip()
+        if not provider:
+            provider = "template"
+        return {
+            "llm_enabled": llm_enabled or self.llm_client is not None,
+            "llm_provider": getattr(self.llm_client, "provider", provider) if self.llm_client else provider,
+            "llm_model": getattr(self.llm_client, "model", None)
+            or self.env.get("LLM_MODEL")
+            or self.env.get("MANUALMIND_LLM_MODEL"),
+        }
+
+    def _no_client_reason(self, env_debug: dict[str, Any]) -> str:
+        if not env_debug["llm_enabled"]:
+            return "disabled"
+        provider = str(env_debug["llm_provider"] or "").lower()
+        if provider == "deepseek" and not self.env.get("DEEPSEEK_API_KEY", "").strip():
+            return "missing_key"
+        if provider == "openai" and not self.env.get("OPENAI_API_KEY", "").strip():
+            return "missing_key"
+        if provider not in {"deepseek", "openai", "mock"}:
+            return "unsupported_provider"
+        return "no_client"
 
     def _client_from_env(self) -> BaseLLMClient | None:
         llm_enabled = self.env.get("LLM_ENABLED", "").lower().strip()
@@ -194,13 +254,26 @@ class ReportGenerationService:
             return f"{source_file} / {section_title}"
         return str(source_file or "")
 
-    def _fallback(self, template_report: str, provider: str, error_type: str) -> ReportGenerationResult:
+    def _fallback(
+        self,
+        template_report: str,
+        provider: str,
+        error_type: str,
+        *,
+        model: str | None = None,
+        fallback_reason: str | None = None,
+        error_message: str | None = None,
+    ) -> ReportGenerationResult:
         return ReportGenerationResult(
             final_answer=template_report,
             llm_enabled=provider not in {"", "template"},
             llm_provider=provider or "template",
+            llm_model=model,
+            llm_used=False,
             fallback_used=True,
+            fallback_reason=fallback_reason or error_type,
             error_type=error_type,
+            error_message_preview=error_message[:300] if error_message else None,
         )
 
 
@@ -208,6 +281,10 @@ def report_result_metadata(result: ReportGenerationResult) -> dict[str, Any]:
     return {
         "llm_enabled": result.llm_enabled,
         "llm_provider": result.llm_provider,
+        "llm_model": result.llm_model,
+        "llm_used": result.llm_used,
         "fallback_used": result.fallback_used,
-        "error_type": result.error_type,
+        "fallback_reason": result.fallback_reason,
+        "llm_error_type": result.error_type,
+        "llm_error_message_preview": result.error_message_preview,
     }

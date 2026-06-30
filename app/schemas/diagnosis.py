@@ -52,8 +52,12 @@ class DiagnosisState(BaseModel):
     final_answer: str | None = None
     llm_enabled: bool = False
     llm_provider: str = "template"
+    llm_model: str | None = None
+    llm_used: bool = False
     fallback_used: bool = True
+    fallback_reason: str | None = None
     llm_error_type: str | None = None
+    llm_error_message_preview: str | None = None
 
 
 class DiagnosisResponse(BaseModel):

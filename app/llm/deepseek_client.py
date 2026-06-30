@@ -30,6 +30,7 @@ class DeepSeekReportClient(BaseLLMClient):
             return LLMReportResult(
                 success=False,
                 provider=self.provider,
+                model=self.model,
                 error_type="deepseek_sdk_not_installed",
                 fallback_required=True,
             )
@@ -54,11 +55,13 @@ class DeepSeekReportClient(BaseLLMClient):
                 max_tokens=self.max_tokens,
             )
             text = response.choices[0].message.content or ""
-        except Exception:
+        except Exception as exc:
             return LLMReportResult(
                 success=False,
                 provider=self.provider,
-                error_type="deepseek_api_error",
+                model=self.model,
+                error_type=type(exc).__name__,
+                error_message=str(exc),
                 fallback_required=True,
             )
 
@@ -66,10 +69,11 @@ class DeepSeekReportClient(BaseLLMClient):
             return LLMReportResult(
                 success=False,
                 provider=self.provider,
+                model=self.model,
                 error_type="empty_output",
                 fallback_required=True,
             )
-        return LLMReportResult(success=True, text=text.strip(), provider=self.provider)
+        return LLMReportResult(success=True, text=text.strip(), provider=self.provider, model=self.model)
 
 
 def _system_prompt(query_type: str | None) -> str:

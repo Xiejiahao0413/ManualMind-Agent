@@ -1,7 +1,7 @@
 import asyncio
 
 from app.llm import DeepSeekReportClient, MockLLMClient
-from app.reporting import ReportGenerationService
+from app.reporting import ReportGenerationService, report_result_metadata
 from app.schemas.diagnosis import DiagnosisState
 
 
@@ -101,7 +101,23 @@ def test_mock_llm_success_uses_llm_output() -> None:
     assert result.llm_enabled is True
     assert result.llm_provider == "mock"
     assert result.fallback_used is False
+    assert result.llm_used is True
     assert "LLM summary" in result.final_answer
+
+
+def test_llm_debug_metadata_reports_success() -> None:
+    state = _sample_state()
+    result = run_service(
+        state,
+        ReportGenerationService(llm_client=MockLLMClient(_valid_llm_report("manual.md:1")), env={}),
+    )
+    metadata = report_result_metadata(result)
+
+    assert metadata["llm_enabled"] is True
+    assert metadata["llm_provider"] == "mock"
+    assert metadata["llm_used"] is True
+    assert metadata["fallback_used"] is False
+    assert metadata["fallback_reason"] is None
 
 
 def test_mock_llm_empty_output_falls_back() -> None:
@@ -123,7 +139,25 @@ def test_mock_llm_exception_falls_back() -> None:
 
     assert result.fallback_used is True
     assert result.error_type == "llm_exception"
+    assert result.fallback_reason == "llm_exception"
+    assert result.error_message_preview == "mock_error"
     assert "manual.md:1" in result.final_answer
+
+
+def test_llm_debug_metadata_reports_fallback_error_preview() -> None:
+    state = _sample_state()
+    result = run_service(
+        state,
+        ReportGenerationService(llm_client=MockLLMClient(raise_error=True), env={}),
+    )
+    metadata = report_result_metadata(result)
+
+    assert metadata["llm_used"] is False
+    assert metadata["fallback_used"] is True
+    assert metadata["fallback_reason"] == "llm_exception"
+    assert metadata["llm_error_type"] == "llm_exception"
+    assert metadata["llm_error_message_preview"] == "mock_error"
+    assert len(metadata["llm_error_message_preview"]) <= 300
 
 
 def test_llm_output_sensitive_data_is_sanitized() -> None:
