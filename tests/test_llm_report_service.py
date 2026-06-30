@@ -1,6 +1,6 @@
 import asyncio
 
-from app.llm import MockLLMClient
+from app.llm import DeepSeekReportClient, MockLLMClient
 from app.reporting import ReportGenerationService
 from app.schemas.diagnosis import DiagnosisState
 
@@ -31,6 +31,66 @@ def test_openai_provider_without_api_key_falls_back() -> None:
     assert result.llm_provider == "template"
     assert result.fallback_used is True
     assert result.error_type == "llm_disabled"
+
+
+def test_deepseek_without_api_key_falls_back() -> None:
+    state = _sample_state()
+    result = run_service(
+        state,
+        ReportGenerationService(
+            env={
+                "LLM_ENABLED": "true",
+                "LLM_PROVIDER": "deepseek",
+            }
+        ),
+    )
+
+    assert result.llm_enabled is False
+    assert result.llm_provider == "template"
+    assert result.fallback_used is True
+    assert result.error_type == "llm_disabled"
+
+
+def test_llm_disabled_false_uses_template_fallback() -> None:
+    state = _sample_state()
+    result = run_service(
+        state,
+        ReportGenerationService(
+            env={
+                "LLM_ENABLED": "false",
+                "LLM_PROVIDER": "deepseek",
+                "DEEPSEEK_API_KEY": "fake-key",
+            }
+        ),
+    )
+
+    assert result.llm_enabled is False
+    assert result.llm_provider == "template"
+    assert result.fallback_used is True
+    assert result.error_type == "llm_disabled"
+
+
+def test_deepseek_client_is_created_from_env_without_network_call() -> None:
+    service = ReportGenerationService(
+        env={
+            "LLM_ENABLED": "true",
+            "LLM_PROVIDER": "deepseek",
+            "DEEPSEEK_API_KEY": "fake-key",
+            "DEEPSEEK_BASE_URL": "https://api.deepseek.com",
+            "LLM_MODEL": "deepseek-v4-flash",
+            "LLM_TIMEOUT_SECONDS": "7",
+            "LLM_MAX_RETRIES": "3",
+        }
+    )
+
+    client = service._client_from_env()
+
+    assert isinstance(client, DeepSeekReportClient)
+    assert client.provider == "deepseek"
+    assert client.model == "deepseek-v4-flash"
+    assert client.base_url == "https://api.deepseek.com"
+    assert client.timeout_seconds == 7
+    assert client.max_retries == 3
 
 
 def test_mock_llm_success_uses_llm_output() -> None:
@@ -112,6 +172,49 @@ def test_handoff_required_cannot_be_overridden_by_llm() -> None:
     assert "LLM summary" not in result.final_answer
 
 
+def test_manual_qa_llm_success_does_not_require_diagnosis_sections() -> None:
+    state = _manual_qa_state()
+    llm_text = "\n\n".join(
+        [
+            "根据上传手册，操作步骤如下：",
+            "1. 点击“增加指令”。",
+            "2. 选择“动作指令”。",
+            "引用来源：\n- robot.pdf:160",
+        ]
+    )
+    result = run_service(
+        state,
+        ReportGenerationService(llm_client=_MockDeepSeekClient(llm_text), env={}),
+    )
+
+    assert result.llm_enabled is True
+    assert result.llm_provider == "deepseek"
+    assert result.fallback_used is False
+    assert "故障识别" not in result.final_answer
+    assert "可能原因" not in result.final_answer
+    assert "robot.pdf:160" in result.final_answer
+
+
+def test_llm_fake_source_refs_are_removed_and_system_refs_are_kept() -> None:
+    state = _manual_qa_state()
+    llm_text = "\n\n".join(
+        [
+            "根据上传手册，操作步骤如下：",
+            "1. 点击“增加指令”。",
+            "引用来源：",
+            "- fake.pdf:999",
+        ]
+    )
+    result = run_service(
+        state,
+        ReportGenerationService(llm_client=_MockDeepSeekClient(llm_text), env={}),
+    )
+
+    assert result.fallback_used is False
+    assert "fake.pdf:999" not in result.final_answer
+    assert "robot.pdf:160" in result.final_answer
+
+
 def _sample_state() -> DiagnosisState:
     return DiagnosisState(
         task_id="task-llm-report",
@@ -139,6 +242,31 @@ def _sample_state() -> DiagnosisState:
         safety_rules=["Disconnect power before inspection."],
         source_refs=["manual.md:1"],
     )
+
+
+def _manual_qa_state() -> DiagnosisState:
+    return DiagnosisState(
+        task_id="task-manual-qa-llm",
+        session_id="session-manual-qa-llm",
+        user_query="如何增加动作指令",
+        sanitized_query="如何增加动作指令",
+        query_type="manual_qa",
+        risk_level="low",
+        retrieved_chunks=[
+            {
+                "text": "1. 点击“增加指令”。\n2. 选择“动作指令”。",
+                "content_type": "general",
+                "source_file": "robot.pdf",
+                "page": 160,
+                "section_title": "4.1.5 创建动作指令",
+            }
+        ],
+        source_refs=["robot.pdf:160"],
+    )
+
+
+class _MockDeepSeekClient(MockLLMClient):
+    provider = "deepseek"
 
 
 def _valid_llm_report(source_ref: str) -> str:

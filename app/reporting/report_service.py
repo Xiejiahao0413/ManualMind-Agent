@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.agents.reporting import build_diagnosis_report, build_manual_qa_answer
-from app.llm import BaseLLMClient, LLMReportContext, LLMReportResult, OpenAIReportClient
+from app.llm import BaseLLMClient, DeepSeekReportClient, LLMReportContext, LLMReportResult, OpenAIReportClient
 from app.schemas.diagnosis import DiagnosisState
 from app.security import sanitize_text
 
@@ -46,15 +46,6 @@ class ReportGenerationService:
                 error_type="handoff_required",
             )
 
-        if state.query_type == "manual_qa":
-            return ReportGenerationResult(
-                final_answer=template_report,
-                llm_enabled=False,
-                llm_provider="template",
-                fallback_used=True,
-                error_type="manual_qa_template",
-            )
-
         client = self.llm_client or self._client_from_env()
         if client is None:
             return ReportGenerationResult(
@@ -75,8 +66,11 @@ class ReportGenerationService:
             return self._fallback(template_report, llm_result.provider, llm_result.error_type or "llm_failed")
 
         sanitized = sanitize_text(llm_result.text)
-        final_answer = self._ensure_source_refs(sanitized.sanitized_text.strip(), state.source_refs)
-        if not self._is_valid_report(final_answer, state.source_refs):
+        final_answer = self._ensure_source_refs(
+            self._remove_untrusted_source_refs(sanitized.sanitized_text.strip(), state.source_refs),
+            state.source_refs,
+        )
+        if not self._is_valid_report(final_answer, state.source_refs, state.query_type):
             return self._fallback(template_report, llm_result.provider, "invalid_report_format")
 
         return ReportGenerationResult(
@@ -88,17 +82,36 @@ class ReportGenerationService:
         )
 
     def _client_from_env(self) -> BaseLLMClient | None:
-        provider = self.env.get("MANUALMIND_LLM_PROVIDER", "").lower().strip()
-        api_key = self.env.get("OPENAI_API_KEY", "").strip()
-        if provider != "openai" or not api_key:
+        llm_enabled = self.env.get("LLM_ENABLED", "").lower().strip()
+        if llm_enabled not in {"true", "1", "yes", "on"}:
             return None
-        model = self.env.get("MANUALMIND_LLM_MODEL", "gpt-4o-mini")
-        timeout_seconds = float(self.env.get("MANUALMIND_LLM_TIMEOUT_SECONDS", "20"))
-        max_tokens = int(self.env.get("MANUALMIND_LLM_MAX_TOKENS", "900"))
-        temperature = float(self.env.get("MANUALMIND_LLM_TEMPERATURE", "0.2"))
+        provider = (self.env.get("LLM_PROVIDER") or self.env.get("MANUALMIND_LLM_PROVIDER") or "").lower().strip()
+        timeout_seconds = float(self.env.get("LLM_TIMEOUT_SECONDS") or self.env.get("MANUALMIND_LLM_TIMEOUT_SECONDS", "20"))
+        max_tokens = int(self.env.get("LLM_MAX_TOKENS") or self.env.get("MANUALMIND_LLM_MAX_TOKENS", "900"))
+        temperature = float(self.env.get("LLM_TEMPERATURE") or self.env.get("MANUALMIND_LLM_TEMPERATURE", "0.2"))
+
+        if provider == "deepseek":
+            api_key = self.env.get("DEEPSEEK_API_KEY", "").strip()
+            if not api_key:
+                return None
+            return DeepSeekReportClient(
+                api_key=api_key,
+                model=self.env.get("LLM_MODEL") or self.env.get("MANUALMIND_LLM_MODEL", "deepseek-v4-flash"),
+                base_url=self.env.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
+                timeout_seconds=timeout_seconds,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                max_retries=int(self.env.get("LLM_MAX_RETRIES", "2")),
+            )
+
+        if provider != "openai":
+            return None
+        api_key = self.env.get("OPENAI_API_KEY", "").strip()
+        if not api_key:
+            return None
         return OpenAIReportClient(
             api_key=api_key,
-            model=model,
+            model=self.env.get("LLM_MODEL") or self.env.get("MANUALMIND_LLM_MODEL", "gpt-4o-mini"),
             timeout_seconds=timeout_seconds,
             max_tokens=max_tokens,
             temperature=temperature,
@@ -107,25 +120,42 @@ class ReportGenerationService:
     def _build_context(self, state: DiagnosisState) -> LLMReportContext:
         query = state.sanitized_query or state.user_query
         evidence_snippets = []
+        evidence_items: list[dict[str, str]] = []
         for chunk in state.retrieved_chunks[:5]:
             text = sanitize_text(str(chunk.get("text") or "")).sanitized_text
             if text:
                 evidence_snippets.append(text[:500])
+                evidence_items.append(
+                    {
+                        "text": text[:800],
+                        "source_ref": self._chunk_source_ref(chunk),
+                        "section_title": sanitize_text(str(chunk.get("section_title") or "")).sanitized_text,
+                        "page": str(chunk.get("page") or ""),
+                    }
+                )
         safety_warnings = [sanitize_text(str(item)).sanitized_text for item in state.safety_rules if item]
         return LLMReportContext(
             query=sanitize_text(query).sanitized_text,
+            query_type=state.query_type,
             device_model=state.device_model,
             fault_code=state.fault_code,
             risk_level=state.risk_level,
             evidence_snippets=evidence_snippets,
+            evidence_items=evidence_items,
             source_refs=sorted(set(state.source_refs)),
             safety_warnings=safety_warnings,
             handoff_required=state.handoff_required,
         )
 
-    def _is_valid_report(self, report: str, source_refs: list[str]) -> bool:
+    def _is_valid_report(self, report: str, source_refs: list[str], query_type: str | None = None) -> bool:
         if not report.strip():
             return False
+        if query_type == "manual_qa":
+            if len(report.strip()) < 20:
+                return False
+            if source_refs and not all(source in report for source in source_refs):
+                return False
+            return "引用来源" in report or "寮曠敤鏉ユ簮" in report
         if not all(section in report for section in REQUIRED_REPORT_SECTIONS):
             return False
         return all(source in report for source in source_refs)
@@ -138,6 +168,31 @@ class ReportGenerationService:
         if "引用来源" in report:
             return f"{report.rstrip()}\n{refs_block}"
         return f"{report.rstrip()}\n\n引用来源：\n{refs_block}"
+
+    def _remove_untrusted_source_refs(self, report: str, source_refs: list[str]) -> str:
+        trusted = {source for source in source_refs if source}
+        if not trusted:
+            return report
+        cleaned_lines: list[str] = []
+        for line in report.splitlines():
+            stripped = line.strip()
+            if stripped.startswith(("- ", "* ")):
+                candidate = stripped[2:].strip()
+                looks_like_source_ref = any(token in candidate for token in (".pdf", ".md", ".txt", ":"))
+                if looks_like_source_ref and candidate not in trusted:
+                    continue
+            cleaned_lines.append(line)
+        return "\n".join(cleaned_lines)
+
+    def _chunk_source_ref(self, chunk: dict[str, Any]) -> str:
+        source_file = chunk.get("source_file")
+        page = chunk.get("page")
+        section_title = chunk.get("section_title")
+        if source_file and page is not None:
+            return f"{source_file}:{page}"
+        if source_file and section_title:
+            return f"{source_file} / {section_title}"
+        return str(source_file or "")
 
     def _fallback(self, template_report: str, provider: str, error_type: str) -> ReportGenerationResult:
         return ReportGenerationResult(
