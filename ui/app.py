@@ -1,11 +1,12 @@
 import json
+import os
 from typing import Any
 
 import requests
 import streamlit as st
 
 
-DEFAULT_BACKEND_URL = "http://127.0.0.1:8000"
+DEFAULT_BACKEND_URL = os.getenv("FASTAPI_BACKEND_URL", "http://127.0.0.1:8000").strip() or "http://127.0.0.1:8000"
 REQUEST_TIMEOUT_SECONDS = 120
 
 
