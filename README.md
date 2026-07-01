@@ -1,61 +1,50 @@
 ﻿# ManualMind-Agent
 
-[English](#english) | [中文](#中文)
+English | [中文](README.zh-CN.md)
 
----
+## Overview
 
-<a id="english"></a>
+ManualMind-Agent is a production-style multi-agent fault diagnosis system for complex equipment manuals. It combines document ingestion, hybrid retrieval, controlled tool execution, LLM-assisted report generation, streaming responses, safety checks, and human handoff.
 
-## English
+The project uses synthetic manuals and evaluation data only. It is designed as an engineering portfolio project that shows how an agent system can be structured beyond a simple RAG demo.
 
-**ManualMind-Agent** is a multi-agent system for question answering and fault diagnosis over complex equipment manuals.
+## Features
 
-It demonstrates a production-style Agent architecture with controlled tool calling, hybrid retrieval, safety guardrails, streaming sanitization, traceability, evaluation, and human handoff.
+- Multi-agent diagnosis workflow with supervisor, diagnosis, retrieval, safety/report, circuit breaker, and handoff stages.
+- Controlled tool calling through a router, guard, retry/fallback manager, and MCP-style tool registry.
+- Hybrid retrieval with local BM25, dense retrieval abstraction, metadata filters, result merging, and rerank interface.
+- Optional Milvus vectorstore backend with local memory fallback when Milvus is not configured or unavailable.
+- Optional LLM report generation with Qwen/DashScope as the recommended provider and DeepSeek as an alternative provider.
+- SSE streaming response with sensitive data filtering.
+- Document upload, parsing, chunking, indexing, scoped retrieval, and source references.
+- Testable memory, safety, trace, evaluation, and fallback behavior.
 
-> **Synthetic data only:** this repository uses synthetic demo manuals and synthetic evaluation samples. It does not include real manufacturer manuals, private industrial documents, or production customer data.
+## Architecture
 
-## Project Highlights
+```mermaid
+flowchart TD
+    API[FastAPI stateless API] --> Guard[Sensitive data guard]
+    Guard --> Graph[LangGraph multi-agent workflow]
+    Graph --> Memory[Memory manager]
+    Graph --> Router[Tool router and guard]
+    Router --> Retry[Retry and fallback manager]
+    Retry --> MCP[MCP-style tools]
+    MCP --> Retrieval[BM25 + dense retrieval + rerank]
+    Retrieval --> Vector[(Local memory or optional Milvus)]
+    Graph --> Report[Safety review and report generation]
+    Report --> Stream[SSE streaming output filter]
+```
 
-- **Multi-agent diagnosis workflow:** supervisor, diagnosis, retrieval, safety/report, circuit breaker, and handoff nodes.
-- **Hybrid retrieval:** BM25 sparse retrieval, dense retrieval interface, metadata filtering, candidate deduplication, and rerank abstraction.
-- **MCP-style tool execution layer:** tool registry, executor, schemas, result validation, and guarded tool access.
-- **Tool control:** Tool Router, Tool Call Guard, retry/fallback handling, duplicate-call reuse, and circuit breaker logic.
-- **Streaming safety:** Sensitive Data Guard plus SSE Streaming Output Guard with a rolling buffer to prevent cross-chunk leakage.
-- **Document ingestion:** Markdown, TXT, and text-based PDF manual parsing with chunk metadata and local indexing.
-- **Optional LLM report generation:** real OpenAI-compatible report generation can be enabled, with template fallback by default.
-- **Optional Milvus backend:** vector store and embedding interfaces support Milvus experiments, with in-memory fallback by default.
-- **Trace and evaluation:** workflow events, tool calls, retrieval evidence, safety behavior, and handoff decisions are observable and testable.
+FastAPI remains stateless. Session state, task state, tool call records, and safety audit records are handled by the memory layer.
 
-## Version Roadmap
+## Tech Stack
 
-| Version | Capability |
-| --- | --- |
-| v0.1-local-demo | Local end-to-end multi-agent diagnosis demo |
-| v0.2-streaming-safety | Rolling-buffer SSE output sanitization |
-| v0.3-pdf-ingestion | Text-based PDF manual ingestion |
-| v0.4-real-llm-report | Optional real LLM report generation with template fallback |
-| v0.5-milvus-retrieval | Optional Milvus/vector backend with memory fallback |
-
-## Current Scope
-
-The default project runs locally with mock or in-memory components. No API key, Milvus service, or external LLM is required for the local demos.
-
-Production extension points include real LLM governance, real Milvus deployment, production embeddings, production rerank models, scanned PDF/OCR parsing, persistent memory, enterprise auth, and real MCP transport.
-
-This project is intentionally explicit: routing, retry, fallback, circuit breaker, validation, sanitization, and handoff logic are implemented in Python rather than hidden inside prompts.
-
-## Data and Evaluation
-
-Local synthetic assets:
-
-- `data/demo_manuals/a100_manual.md`: focused A100 compressor demo manual.
-- `data/manuals/`: 10 synthetic Markdown manuals across multiple equipment types.
-- `data/pdf_manuals/`: 2 synthetic text-based PDF manuals.
-- `data/eval_samples/equipment_fault_eval_50.json`: 50 standard samples.
-- `data/eval_samples/equipment_fault_adversarial_30.json`: 30 adversarial and boundary samples.
-- `data/eval_samples/equipment_fault_multi_manuals_50.json`: 50 multi-manual samples.
-
-Default evaluation covers **130 samples**. Current local validation: **141 tests passed**.
+- Python, FastAPI, Pydantic
+- LangGraph-style workflow orchestration
+- Local BM25 retrieval, dense retrieval interface, optional Milvus backend
+- OpenAI-compatible LLM clients for Qwen/DashScope and DeepSeek
+- SSE streaming, sensitive data masking, retry/fallback control
+- Pytest test suite
 
 ## Quick Start
 
@@ -65,225 +54,92 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-Run tests and demos:
+Run the API:
+
+```powershell
+uvicorn app.main:app --reload
+```
+
+Run tests:
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest
-.\.venv\Scripts\python.exe scripts\demo_run.py
-.\.venv\Scripts\python.exe scripts\demo_multi_manuals.py
-.\.venv\Scripts\python.exe scripts\demo_pdf_manuals.py
-.\.venv\Scripts\python.exe scripts\demo_llm_report.py
-.\.venv\Scripts\python.exe scripts\demo_milvus_retrieval.py
-.\.venv\Scripts\python.exe scripts\run_eval.py
 ```
 
-Start the API:
+## Environment Variables
 
-```powershell
-uvicorn app.main:app --reload
+Core LLM settings:
+
+```text
+LLM_ENABLED=true
+LLM_PROVIDER=qwen
+LLM_MODEL=qwen-plus
+LLM_TIMEOUT_SECONDS=20
+LLM_MAX_RETRIES=2
 ```
 
-Optional DeepSeek LLM provider:
+Qwen / DashScope, recommended:
 
-```powershell
-$env:LLM_ENABLED="true"
-$env:LLM_PROVIDER="deepseek"
-$env:DEEPSEEK_API_KEY="your_deepseek_api_key_here"
-$env:DEEPSEEK_BASE_URL="https://api.deepseek.com"
-$env:LLM_MODEL="deepseek-v4-flash"
-$env:LLM_TIMEOUT_SECONDS="20"
-$env:LLM_MAX_RETRIES="2"
-uvicorn app.main:app --reload
+```text
+DASHSCOPE_API_KEY=<your_dashscope_api_key>
+DASHSCOPE_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 ```
 
-Optional Qwen / DashScope LLM provider:
+DeepSeek, optional:
 
-```powershell
-$env:LLM_ENABLED="true"
-$env:LLM_PROVIDER="qwen"
-$env:DASHSCOPE_API_KEY="your_dashscope_api_key_here"
-$env:DASHSCOPE_BASE_URL="https://dashscope.aliyuncs.com/compatible-mode/v1"
-$env:LLM_MODEL="qwen-plus"
-$env:LLM_TIMEOUT_SECONDS="20"
-$env:LLM_MAX_RETRIES="2"
-uvicorn app.main:app --reload
+```text
+DEEPSEEK_API_KEY=<your_deepseek_api_key>
+DEEPSEEK_BASE_URL=https://api.deepseek.com
 ```
-
-Set `LLM_PROVIDER=deepseek` to keep using the existing DeepSeek provider. If Qwen is selected but `DASHSCOPE_API_KEY` is missing, the SDK is unavailable, the call fails, or the model output fails validation, the service uses the existing template formatter fallback.
 
 Optional Milvus vector backend:
 
-```powershell
-$env:VECTORSTORE_BACKEND="milvus"
-$env:MILVUS_URI="http://localhost:19530"
-$env:MILVUS_TOKEN=""
-$env:MILVUS_COLLECTION="manualmind_chunks"
-$env:MILVUS_DIM="64"
-$env:EMBEDDING_PROVIDER="mock"
-$env:EMBEDDING_MODEL="mock"
-uvicorn app.main:app --reload
+```text
+VECTORSTORE_BACKEND=local
+MILVUS_URI=<your_milvus_uri>
+MILVUS_TOKEN=<your_milvus_token>
+MILVUS_COLLECTION=manualmind_chunks
+MILVUS_DIM=64
+EMBEDDING_PROVIDER=mock
+EMBEDDING_MODEL=mock
 ```
 
-If `VECTORSTORE_BACKEND` is unset or set to `local`, the API uses the local in-memory vector store. The legacy `MANUALMIND_VECTOR_BACKEND`, `MANUALMIND_EMBEDDING_PROVIDER`, `MANUALMIND_EMBEDDING_MODEL`, `MANUALMIND_EMBEDDING_DIMENSION`, and `MANUALMIND_MILVUS_COLLECTION` variables remain supported. If Milvus is enabled but `MILVUS_URI` is missing or the connection cannot be initialized, startup falls back to memory.
+When `VECTORSTORE_BACKEND` is unset or set to `local`, the project uses local in-memory retrieval. If Milvus is enabled but unavailable, the service falls back to memory.
 
-Core endpoints:
+## Testing
 
-- `GET /api/health`
-- `POST /api/manual/upload`
-- `POST /api/manual/index`
-- `POST /api/diagnosis/chat`
-- `GET /api/diagnosis/tasks/{task_id}`
-- `GET /api/trace/{trace_id}`
-- `POST /api/eval/run`
-
-## Documentation
-
-- [Architecture](docs/architecture.md)
-- [Demo Guide](docs/demo.md)
-- [Interview Notes](docs/interview_notes.md)
-- [Resume Bullets](docs/resume_bullets.md)
-- [Version History](docs/version_history.md)
-
-## Project Structure
+Current validation result:
 
 ```text
-app/
-  agents/        multi-agent workflow and tool service
-  api/           FastAPI routes
-  embeddings/    embedding client interfaces
-  evaluation/    evaluation runner and schemas
-  ingestion/     manual parsing, splitting, indexing
-  llm/           optional LLM client abstraction
-  mcp_server/    MCP-style tool registry and executor
-  memory/        in-memory session/task/tool/safety memory
-  retrieval/     BM25, dense, hybrid retrieval, rerank interface
-  security/      sensitive data detection and streaming guard
-  tracing/       in-memory trace manager
-  vectorstore/   optional vector backend abstraction
-data/            synthetic manuals and evaluation samples
-docs/            architecture, demo, interview, resume docs
-scripts/         local demo and indexing scripts
-tests/           pytest coverage for core behavior
+169 passed, 1 warning
 ```
 
----
+The warning is a FastAPI/Starlette TestClient deprecation warning and does not affect project behavior.
 
-<a id="中文"></a>
+## Deployment
 
-## 中文
+Render deployment can use the standard Python web service flow:
 
-**ManualMind-Agent** 是一个面向复杂设备手册问答与故障诊断的多 Agent 系统。
+- Build command: `pip install -r requirements.txt`
+- Start command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+- Configure provider keys and optional Milvus settings in Render environment variables.
 
-它用一个本地可运行的项目，展示文档入库、混合检索、受控工具调用、安全脱敏、流式输出、Trace、Evaluation 和人工接管如何组合成一条完整诊断链路。
+Do not commit API keys, tokens, or service credentials.
 
-> **数据声明：** 本仓库只使用合成 demo 手册和合成评测样本，不包含真实厂家手册、企业私有文档或生产客户数据。
+## Roadmap
 
-## 核心亮点
+- Add production-grade persistent memory and audit storage.
+- Add real embedding and rerank providers behind the existing interfaces.
+- Expand OCR support for scanned manuals.
+- Add stronger observability for tool calls, retrieval quality, and handoff decisions.
 
-- **多 Agent 诊断工作流：** 包含 Supervisor、Diagnosis、Retrieval、Safety Report、Circuit Breaker、Handoff 等节点。
-- **混合检索：** BM25 精确匹配、dense retrieval 接口、metadata filter、候选去重和 rerank 抽象。
-- **MCP-style 工具层：** 工具注册、统一执行、结构化 schema、结果校验和受控工具访问。
-- **工具调用控制：** Tool Router、Tool Call Guard、Retry/Fallback、重复签名复用和熔断逻辑。
-- **流式安全：** Sensitive Data Guard 与 rolling buffer SSE 输出脱敏，避免敏感信息被分块绕过检测。
-- **文档入库：** 支持 Markdown、TXT、text-based PDF 解析、切分、元数据构建和本地索引。
-- **可选真实 LLM 报告：** 默认走模板报告；显式配置后可尝试真实 LLM，失败自动 fallback。
-- **可选 Milvus 后端：** 默认 memory backend，可选接入 Milvus 做向量检索实验。
-- **Trace 与评测：** 记录节点流转、工具调用、检索证据、安全行为和人工接管决策。
+## Security Notes
 
-## 当前范围
+- Never commit API keys, Milvus tokens, internal URLs, device identifiers, or customer data.
+- Use environment variables or a secret manager for provider credentials.
+- Rotate credentials immediately if a key or token is exposed.
+- Keep uploaded manuals and evaluation data sanitized before sharing demos.
 
-当前默认采用本地 mock / in-memory 组件，完整 demo 可以直接在本机运行，不依赖 API key、Milvus 服务或外部 LLM。
+## Author
 
-OpenAI、Milvus、生产 embedding、生产 rerank、扫描 PDF/OCR、持久化记忆、真实 MCP transport、企业认证和审计存储，都是后续生产化扩展点。
-
-项目重点不是宣称已经生产落地，而是展示一个“生产级架构风格”的 Agent 工程：关键控制逻辑用显式 Python 实现，而不是藏在 prompt 里。
-
-## 数据规模
-
-本地合成数据包括：
-
-- 1 份 A100 空压机 demo 手册。
-- 10 份多设备 Markdown 合成手册。
-- 2 份 text-based PDF 合成手册。
-- 50 条标准评测样本。
-- 30 条对抗 / 边界评测样本。
-- 50 条多设备评测样本。
-
-默认评测共 **130 条样本**。当前本地验证结果：**141 tests passed**。
-
-## 快速开始
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\activate
-pip install -r requirements.txt
-```
-
-常用命令：
-
-```powershell
-.\.venv\Scripts\python.exe -m pytest
-.\.venv\Scripts\python.exe scripts\demo_run.py
-.\.venv\Scripts\python.exe scripts\demo_multi_manuals.py
-.\.venv\Scripts\python.exe scripts\demo_pdf_manuals.py
-.\.venv\Scripts\python.exe scripts\demo_llm_report.py
-.\.venv\Scripts\python.exe scripts\demo_milvus_retrieval.py
-.\.venv\Scripts\python.exe scripts\run_eval.py
-```
-
-启动 API：
-
-```powershell
-uvicorn app.main:app --reload
-```
-
-可选 DeepSeek LLM provider：
-
-```powershell
-$env:LLM_ENABLED="true"
-$env:LLM_PROVIDER="deepseek"
-$env:DEEPSEEK_API_KEY="your_deepseek_api_key_here"
-$env:DEEPSEEK_BASE_URL="https://api.deepseek.com"
-$env:LLM_MODEL="deepseek-v4-flash"
-$env:LLM_TIMEOUT_SECONDS="20"
-$env:LLM_MAX_RETRIES="2"
-uvicorn app.main:app --reload
-```
-
-可选 Qwen / DashScope LLM provider：
-
-```powershell
-$env:LLM_ENABLED="true"
-$env:LLM_PROVIDER="qwen"
-$env:DASHSCOPE_API_KEY="your_dashscope_api_key_here"
-$env:DASHSCOPE_BASE_URL="https://dashscope.aliyuncs.com/compatible-mode/v1"
-$env:LLM_MODEL="qwen-plus"
-$env:LLM_TIMEOUT_SECONDS="20"
-$env:LLM_MAX_RETRIES="2"
-uvicorn app.main:app --reload
-```
-
-如果要继续使用 DeepSeek，设置 `LLM_PROVIDER=deepseek`。选择 Qwen 但缺少 `DASHSCOPE_API_KEY`、SDK 不可用、调用失败或模型输出校验不通过时，系统会继续使用现有 template formatter fallback。
-
-可选 Milvus 向量后端：
-
-```powershell
-$env:VECTORSTORE_BACKEND="milvus"
-$env:MILVUS_URI="http://localhost:19530"
-$env:MILVUS_TOKEN=""
-$env:MILVUS_COLLECTION="manualmind_chunks"
-$env:MILVUS_DIM="64"
-$env:EMBEDDING_PROVIDER="mock"
-$env:EMBEDDING_MODEL="mock"
-uvicorn app.main:app --reload
-```
-
-如果不配置 `VECTORSTORE_BACKEND`，或设置为 `local`，系统继续使用本地 in-memory vector store。旧变量 `MANUALMIND_VECTOR_BACKEND`、`MANUALMIND_EMBEDDING_PROVIDER`、`MANUALMIND_EMBEDDING_MODEL`、`MANUALMIND_EMBEDDING_DIMENSION`、`MANUALMIND_MILVUS_COLLECTION` 仍兼容。启用 Milvus 但缺少 `MILVUS_URI` 或连接初始化失败时，会自动 fallback 到 memory，不影响启动。
-
-## 文档
-
-- [架构说明](docs/architecture.md)
-- [Demo 指南](docs/demo.md)
-- [面试讲解笔记](docs/interview_notes.md)
-- [简历项目描述](docs/resume_bullets.md)
-- [版本历史](docs/version_history.md)
+ManualMind-Agent is maintained as an agent engineering portfolio project.
