@@ -83,6 +83,21 @@ Start the API:
 uvicorn app.main:app --reload
 ```
 
+Optional Milvus vector backend:
+
+```powershell
+$env:VECTORSTORE_BACKEND="milvus"
+$env:MILVUS_URI="http://localhost:19530"
+$env:MILVUS_TOKEN=""
+$env:MILVUS_COLLECTION="manualmind_chunks"
+$env:MILVUS_DIM="64"
+$env:EMBEDDING_PROVIDER="mock"
+$env:EMBEDDING_MODEL="mock"
+uvicorn app.main:app --reload
+```
+
+If `VECTORSTORE_BACKEND` is unset or set to `local`, the API uses the local in-memory vector store. The legacy `MANUALMIND_VECTOR_BACKEND`, `MANUALMIND_EMBEDDING_PROVIDER`, `MANUALMIND_EMBEDDING_MODEL`, `MANUALMIND_EMBEDDING_DIMENSION`, and `MANUALMIND_MILVUS_COLLECTION` variables remain supported. If Milvus is enabled but `MILVUS_URI` is missing or the connection cannot be initialized, startup falls back to memory.
+
 Core endpoints:
 
 - `GET /api/health`
@@ -193,6 +208,21 @@ pip install -r requirements.txt
 ```powershell
 uvicorn app.main:app --reload
 ```
+
+可选 Milvus 向量后端：
+
+```powershell
+$env:VECTORSTORE_BACKEND="milvus"
+$env:MILVUS_URI="http://localhost:19530"
+$env:MILVUS_TOKEN=""
+$env:MILVUS_COLLECTION="manualmind_chunks"
+$env:MILVUS_DIM="64"
+$env:EMBEDDING_PROVIDER="mock"
+$env:EMBEDDING_MODEL="mock"
+uvicorn app.main:app --reload
+```
+
+如果不配置 `VECTORSTORE_BACKEND`，或设置为 `local`，系统继续使用本地 in-memory vector store。旧变量 `MANUALMIND_VECTOR_BACKEND`、`MANUALMIND_EMBEDDING_PROVIDER`、`MANUALMIND_EMBEDDING_MODEL`、`MANUALMIND_EMBEDDING_DIMENSION`、`MANUALMIND_MILVUS_COLLECTION` 仍兼容。启用 Milvus 但缺少 `MILVUS_URI` 或连接初始化失败时，会自动 fallback 到 memory，不影响启动。
 
 ## 文档
 
