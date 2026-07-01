@@ -4,7 +4,14 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.agents.reporting import build_diagnosis_report, build_manual_qa_answer
-from app.llm import BaseLLMClient, DeepSeekReportClient, LLMReportContext, LLMReportResult, OpenAIReportClient
+from app.llm import (
+    BaseLLMClient,
+    DeepSeekReportClient,
+    LLMReportContext,
+    LLMReportResult,
+    OpenAIReportClient,
+    QwenReportClient,
+)
 from app.schemas.diagnosis import DiagnosisState
 from app.security import sanitize_text
 
@@ -57,6 +64,17 @@ class ReportGenerationService:
         client = self.llm_client or self._client_from_env()
         if client is None:
             fallback_reason = self._no_client_reason(env_debug)
+            if env_debug["llm_enabled"] and env_debug["llm_provider"] == "qwen":
+                return ReportGenerationResult(
+                    final_answer=template_report,
+                    llm_enabled=True,
+                    llm_provider="qwen",
+                    llm_model=env_debug["llm_model"] or "qwen-plus",
+                    llm_used=False,
+                    fallback_used=True,
+                    fallback_reason=fallback_reason,
+                    error_type=fallback_reason,
+                )
             return ReportGenerationResult(
                 final_answer=template_report,
                 llm_enabled=False,
@@ -135,9 +153,11 @@ class ReportGenerationService:
         provider = str(env_debug["llm_provider"] or "").lower()
         if provider == "deepseek" and not self.env.get("DEEPSEEK_API_KEY", "").strip():
             return "missing_key"
+        if provider == "qwen" and not self.env.get("DASHSCOPE_API_KEY", "").strip():
+            return "missing_key"
         if provider == "openai" and not self.env.get("OPENAI_API_KEY", "").strip():
             return "missing_key"
-        if provider not in {"deepseek", "openai", "mock"}:
+        if provider not in {"deepseek", "qwen", "openai", "mock"}:
             return "unsupported_provider"
         return "no_client"
 
@@ -158,6 +178,23 @@ class ReportGenerationService:
                 api_key=api_key,
                 model=self.env.get("LLM_MODEL") or self.env.get("MANUALMIND_LLM_MODEL", "deepseek-v4-flash"),
                 base_url=self.env.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
+                timeout_seconds=timeout_seconds,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                max_retries=int(self.env.get("LLM_MAX_RETRIES", "2")),
+            )
+
+        if provider == "qwen":
+            api_key = self.env.get("DASHSCOPE_API_KEY", "").strip()
+            if not api_key:
+                return None
+            return QwenReportClient(
+                api_key=api_key,
+                model=self.env.get("LLM_MODEL") or self.env.get("MANUALMIND_LLM_MODEL", "qwen-plus"),
+                base_url=self.env.get(
+                    "DASHSCOPE_BASE_URL",
+                    "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                ),
                 timeout_seconds=timeout_seconds,
                 max_tokens=max_tokens,
                 temperature=temperature,

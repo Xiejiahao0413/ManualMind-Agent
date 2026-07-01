@@ -83,6 +83,21 @@ Start the API:
 uvicorn app.main:app --reload
 ```
 
+Optional Qwen / DashScope LLM provider:
+
+```powershell
+$env:LLM_ENABLED="true"
+$env:LLM_PROVIDER="qwen"
+$env:DASHSCOPE_API_KEY="your_dashscope_api_key_here"
+$env:DASHSCOPE_BASE_URL="https://dashscope.aliyuncs.com/compatible-mode/v1"
+$env:LLM_MODEL="qwen-plus"
+$env:LLM_TIMEOUT_SECONDS="20"
+$env:LLM_MAX_RETRIES="2"
+uvicorn app.main:app --reload
+```
+
+Set `LLM_PROVIDER=deepseek` to keep using the existing DeepSeek provider. If Qwen is selected but `DASHSCOPE_API_KEY` is missing, the SDK is unavailable, the call fails, or the model output fails validation, the service uses the existing template formatter fallback.
+
 Core endpoints:
 
 - `GET /api/health`
@@ -193,6 +208,21 @@ pip install -r requirements.txt
 ```powershell
 uvicorn app.main:app --reload
 ```
+
+可选 Qwen / DashScope LLM provider：
+
+```powershell
+$env:LLM_ENABLED="true"
+$env:LLM_PROVIDER="qwen"
+$env:DASHSCOPE_API_KEY="your_dashscope_api_key_here"
+$env:DASHSCOPE_BASE_URL="https://dashscope.aliyuncs.com/compatible-mode/v1"
+$env:LLM_MODEL="qwen-plus"
+$env:LLM_TIMEOUT_SECONDS="20"
+$env:LLM_MAX_RETRIES="2"
+uvicorn app.main:app --reload
+```
+
+如果要继续使用 DeepSeek，设置 `LLM_PROVIDER=deepseek`。选择 Qwen 但缺少 `DASHSCOPE_API_KEY`、SDK 不可用、调用失败或模型输出校验不通过时，系统会继续使用现有 template formatter fallback。
 
 ## 文档
 

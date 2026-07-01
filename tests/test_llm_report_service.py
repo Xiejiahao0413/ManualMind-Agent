@@ -1,6 +1,6 @@
 import asyncio
 
-from app.llm import DeepSeekReportClient, MockLLMClient
+from app.llm import DeepSeekReportClient, MockLLMClient, QwenReportClient
 from app.reporting import ReportGenerationService, report_result_metadata
 from app.schemas.diagnosis import DiagnosisState
 
@@ -91,6 +91,117 @@ def test_deepseek_client_is_created_from_env_without_network_call() -> None:
     assert client.base_url == "https://api.deepseek.com"
     assert client.timeout_seconds == 7
     assert client.max_retries == 3
+
+
+def test_qwen_without_dashscope_api_key_falls_back() -> None:
+    state = _sample_state()
+    result = run_service(
+        state,
+        ReportGenerationService(
+            env={
+                "LLM_ENABLED": "true",
+                "LLM_PROVIDER": "qwen",
+                "LLM_MODEL": "qwen-plus",
+            }
+        ),
+    )
+    metadata = report_result_metadata(result)
+
+    assert result.llm_enabled is True
+    assert result.llm_provider == "qwen"
+    assert result.llm_model == "qwen-plus"
+    assert result.llm_used is False
+    assert result.fallback_used is True
+    assert result.fallback_reason == "missing_key"
+    assert result.error_type == "missing_key"
+    assert "manual.md:1" in result.final_answer
+    assert metadata["llm_provider"] == "qwen"
+    assert metadata["llm_model"] == "qwen-plus"
+    assert metadata["llm_error_type"] == "missing_key"
+
+
+def test_qwen_client_is_created_from_env_without_network_call() -> None:
+    service = ReportGenerationService(
+        env={
+            "LLM_ENABLED": "true",
+            "LLM_PROVIDER": "qwen",
+            "DASHSCOPE_API_KEY": "fake-dashscope-key",
+            "DASHSCOPE_BASE_URL": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            "LLM_MODEL": "qwen-turbo",
+            "LLM_TIMEOUT_SECONDS": "9",
+            "LLM_MAX_RETRIES": "4",
+        }
+    )
+
+    client = service._client_from_env()
+
+    assert isinstance(client, QwenReportClient)
+    assert client.provider == "qwen"
+    assert client.model == "qwen-turbo"
+    assert client.base_url == "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    assert client.timeout_seconds == 9
+    assert client.max_retries == 4
+
+
+def test_mock_qwen_success_uses_llm_output_and_debug_metadata() -> None:
+    state = _sample_state()
+    result = run_service(
+        state,
+        ReportGenerationService(llm_client=_MockQwenClient(_valid_llm_report("manual.md:1")), env={}),
+    )
+    metadata = report_result_metadata(result)
+
+    assert result.llm_enabled is True
+    assert result.llm_provider == "qwen"
+    assert result.llm_model == "qwen-plus"
+    assert result.llm_used is True
+    assert result.fallback_used is False
+    assert "LLM summary" in result.final_answer
+    assert metadata["llm_provider"] == "qwen"
+    assert metadata["llm_model"] == "qwen-plus"
+    assert metadata["llm_used"] is True
+    assert metadata["fallback_reason"] is None
+
+
+def test_mock_qwen_exception_falls_back_with_qwen_debug_metadata() -> None:
+    state = _sample_state()
+    result = run_service(
+        state,
+        ReportGenerationService(llm_client=_MockQwenClient("", raise_error=True, error_type="dashscope boom"), env={}),
+    )
+    metadata = report_result_metadata(result)
+
+    assert result.llm_enabled is True
+    assert result.llm_provider == "qwen"
+    assert result.llm_used is False
+    assert result.fallback_used is True
+    assert result.fallback_reason == "llm_exception"
+    assert result.error_type == "llm_exception"
+    assert result.error_message_preview == "dashscope boom"
+    assert "manual.md:1" in result.final_answer
+    assert metadata["llm_provider"] == "qwen"
+    assert metadata["llm_error_message_preview"] == "dashscope boom"
+
+
+def test_qwen_fake_source_refs_are_removed_and_system_refs_are_kept() -> None:
+    state = _manual_qa_state()
+    llm_text = "\n\n".join(
+        [
+            "鏍规嵁涓婁紶鎵嬪唽锛屾搷浣滄楠ゅ涓嬶細",
+            "1. 鐐瑰嚮鈥滃鍔犳寚浠も€濄€?",
+            "寮曠敤鏉ユ簮锛?",
+            "- fake-qwen.pdf:999",
+        ]
+    )
+    result = run_service(
+        state,
+        ReportGenerationService(llm_client=_MockQwenClient(llm_text), env={}),
+    )
+
+    assert result.llm_provider == "qwen"
+    assert result.fallback_used is False
+    assert "fake-qwen.pdf:999" not in result.final_answer
+    assert "robot.pdf:160" in result.final_answer
 
 
 def test_mock_llm_success_uses_llm_output() -> None:
@@ -301,6 +412,21 @@ def _manual_qa_state() -> DiagnosisState:
 
 class _MockDeepSeekClient(MockLLMClient):
     provider = "deepseek"
+
+
+class _MockQwenClient(MockLLMClient):
+    provider = "qwen"
+
+    def __init__(
+        self,
+        response_text: str = "",
+        *,
+        model: str = "qwen-plus",
+        raise_error: bool = False,
+        error_type: str = "qwen_mock_error",
+    ) -> None:
+        super().__init__(response_text, raise_error=raise_error, error_type=error_type)
+        self.model = model
 
 
 def _valid_llm_report(source_ref: str) -> str:
