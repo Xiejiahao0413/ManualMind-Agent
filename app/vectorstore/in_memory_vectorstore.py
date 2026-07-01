@@ -49,6 +49,17 @@ class InMemoryVectorStore(VectorStore):
             )
         return sorted(scored, key=lambda result: result.score, reverse=True)[:top_k]
 
+    def delete_doc(self, doc_id: str) -> None:
+        kept_chunks: list[DocumentChunk] = []
+        kept_embeddings: list[list[float]] = []
+        for chunk, embedding in zip(self._chunks, self._embeddings, strict=True):
+            if chunk.doc_id == doc_id:
+                continue
+            kept_chunks.append(chunk)
+            kept_embeddings.append(embedding)
+        self._chunks = kept_chunks
+        self._embeddings = kept_embeddings
+
 
 def cosine_similarity(left: list[float], right: list[float]) -> float:
     if not left or not right:

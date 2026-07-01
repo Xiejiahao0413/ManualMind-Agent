@@ -1,6 +1,7 @@
 from typing import Any
 
 from app.retrieval.bm25 import LocalBM25Retriever
+from app.retrieval.base import MilvusDenseRetriever
 from app.retrieval.dense import InMemoryDenseRetriever
 from app.retrieval.merge import merge_retrieval_results
 from app.retrieval.reranker import MockReranker, Reranker
@@ -11,11 +12,11 @@ class HybridRetrieverImpl:
     def __init__(
         self,
         bm25_retriever: LocalBM25Retriever | None = None,
-        dense_retriever: InMemoryDenseRetriever | None = None,
+        dense_retriever: MilvusDenseRetriever | InMemoryDenseRetriever | None = None,
         reranker: Reranker | None = None,
     ) -> None:
         self.bm25_retriever = bm25_retriever or LocalBM25Retriever()
-        self.dense_retriever = dense_retriever or InMemoryDenseRetriever()
+        self.dense_retriever = dense_retriever or _build_default_dense_retriever()
         self.reranker = reranker or MockReranker()
 
     def add_documents(self, chunks: list[DocumentChunk]) -> None:
@@ -47,3 +48,14 @@ class HybridRetrieverImpl:
             return await self.reranker.rerank(query, candidates, top_n=rerank_limit)
         except Exception:
             return sorted(candidates, key=lambda result: result.score, reverse=True)[:rerank_limit]
+
+
+def _build_default_dense_retriever():
+    from app.retrieval.vector_dense import VectorDenseRetriever
+    from app.vectorstore.factory import create_vector_runtime
+
+    runtime = create_vector_runtime()
+    return VectorDenseRetriever(
+        embedding_client=runtime.embedding_client,
+        vector_store=runtime.vector_store,
+    )

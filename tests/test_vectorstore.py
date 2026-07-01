@@ -1,6 +1,7 @@
 from app.embeddings import MockEmbeddingClient
+from app.retrieval.vector_dense import VectorDenseRetriever
 from app.schemas.retrieval import DocumentChunk
-from app.vectorstore import InMemoryVectorStore
+from app.vectorstore import InMemoryVectorStore, VectorStoreError
 
 
 def sample_chunks() -> list[DocumentChunk]:
@@ -72,3 +73,58 @@ def test_in_memory_vectorstore_upsert_replaces_existing_chunk() -> None:
 
     assert len([result for result in results if result.chunk_id == "a100-e03"]) == 1
     assert results[0].text == updated.text
+
+
+def test_in_memory_vectorstore_delete_doc() -> None:
+    embedding = MockEmbeddingClient(dimension=16)
+    store = InMemoryVectorStore()
+    chunks = sample_chunks()
+    store.upsert_chunks(chunks, embedding.embed_texts([chunk.text for chunk in chunks]))
+
+    store.delete_doc("a100")
+    results = store.search(embedding.embed_text("temperature pressure fault"), top_k=5)
+
+    assert results
+    assert all(result.doc_id != "a100" for result in results)
+
+
+def test_vector_dense_retriever_uses_doc_id_filter() -> None:
+    embedding = MockEmbeddingClient(dimension=32)
+    retriever = VectorDenseRetriever(embedding_client=embedding, vector_store=InMemoryVectorStore())
+    retriever.add_documents(sample_chunks())
+
+    import asyncio
+
+    results = asyncio.run(
+        retriever.search("temperature pressure fault", top_k=5, metadata_filter={"doc_id": ["b200"]})
+    )
+
+    assert results
+    assert all(result.doc_id == "b200" for result in results)
+
+
+def test_vector_dense_retriever_falls_back_to_memory_on_milvus_error() -> None:
+    embedding = MockEmbeddingClient(dimension=32)
+    retriever = VectorDenseRetriever(
+        embedding_client=embedding,
+        vector_store=FailingVectorStore(),
+        fallback_store=InMemoryVectorStore(),
+    )
+    retriever.add_documents(sample_chunks())
+
+    import asyncio
+
+    results = asyncio.run(retriever.search("temperature sensor E03", top_k=1))
+
+    assert results
+    assert results[0].doc_id == "a100"
+
+
+class FailingVectorStore(InMemoryVectorStore):
+    backend = "milvus"
+
+    def upsert_chunks(self, chunks: list[DocumentChunk], embeddings: list[list[float]]) -> None:
+        raise VectorStoreError("milvus_upsert_failed")
+
+    def search(self, query_embedding, top_k=5, filters=None):
+        raise VectorStoreError("milvus_search_failed")

@@ -33,5 +33,8 @@ class VectorStore(ABC):
     ) -> list[RetrievalResult]:
         raise NotImplementedError
 
+    def delete_doc(self, doc_id: str) -> None:
+        raise NotImplementedError
+
     def status(self) -> VectorStoreStatus:
         return VectorStoreStatus(backend=self.backend, available=True)

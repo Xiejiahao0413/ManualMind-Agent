@@ -83,6 +83,19 @@ Start the API:
 uvicorn app.main:app --reload
 ```
 
+Optional DeepSeek LLM provider:
+
+```powershell
+$env:LLM_ENABLED="true"
+$env:LLM_PROVIDER="deepseek"
+$env:DEEPSEEK_API_KEY="your_deepseek_api_key_here"
+$env:DEEPSEEK_BASE_URL="https://api.deepseek.com"
+$env:LLM_MODEL="deepseek-v4-flash"
+$env:LLM_TIMEOUT_SECONDS="20"
+$env:LLM_MAX_RETRIES="2"
+uvicorn app.main:app --reload
+```
+
 Optional Qwen / DashScope LLM provider:
 
 ```powershell
@@ -97,6 +110,21 @@ uvicorn app.main:app --reload
 ```
 
 Set `LLM_PROVIDER=deepseek` to keep using the existing DeepSeek provider. If Qwen is selected but `DASHSCOPE_API_KEY` is missing, the SDK is unavailable, the call fails, or the model output fails validation, the service uses the existing template formatter fallback.
+
+Optional Milvus vector backend:
+
+```powershell
+$env:VECTORSTORE_BACKEND="milvus"
+$env:MILVUS_URI="http://localhost:19530"
+$env:MILVUS_TOKEN=""
+$env:MILVUS_COLLECTION="manualmind_chunks"
+$env:MILVUS_DIM="64"
+$env:EMBEDDING_PROVIDER="mock"
+$env:EMBEDDING_MODEL="mock"
+uvicorn app.main:app --reload
+```
+
+If `VECTORSTORE_BACKEND` is unset or set to `local`, the API uses the local in-memory vector store. The legacy `MANUALMIND_VECTOR_BACKEND`, `MANUALMIND_EMBEDDING_PROVIDER`, `MANUALMIND_EMBEDDING_MODEL`, `MANUALMIND_EMBEDDING_DIMENSION`, and `MANUALMIND_MILVUS_COLLECTION` variables remain supported. If Milvus is enabled but `MILVUS_URI` is missing or the connection cannot be initialized, startup falls back to memory.
 
 Core endpoints:
 
@@ -209,6 +237,19 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
+可选 DeepSeek LLM provider：
+
+```powershell
+$env:LLM_ENABLED="true"
+$env:LLM_PROVIDER="deepseek"
+$env:DEEPSEEK_API_KEY="your_deepseek_api_key_here"
+$env:DEEPSEEK_BASE_URL="https://api.deepseek.com"
+$env:LLM_MODEL="deepseek-v4-flash"
+$env:LLM_TIMEOUT_SECONDS="20"
+$env:LLM_MAX_RETRIES="2"
+uvicorn app.main:app --reload
+```
+
 可选 Qwen / DashScope LLM provider：
 
 ```powershell
@@ -223,6 +264,21 @@ uvicorn app.main:app --reload
 ```
 
 如果要继续使用 DeepSeek，设置 `LLM_PROVIDER=deepseek`。选择 Qwen 但缺少 `DASHSCOPE_API_KEY`、SDK 不可用、调用失败或模型输出校验不通过时，系统会继续使用现有 template formatter fallback。
+
+可选 Milvus 向量后端：
+
+```powershell
+$env:VECTORSTORE_BACKEND="milvus"
+$env:MILVUS_URI="http://localhost:19530"
+$env:MILVUS_TOKEN=""
+$env:MILVUS_COLLECTION="manualmind_chunks"
+$env:MILVUS_DIM="64"
+$env:EMBEDDING_PROVIDER="mock"
+$env:EMBEDDING_MODEL="mock"
+uvicorn app.main:app --reload
+```
+
+如果不配置 `VECTORSTORE_BACKEND`，或设置为 `local`，系统继续使用本地 in-memory vector store。旧变量 `MANUALMIND_VECTOR_BACKEND`、`MANUALMIND_EMBEDDING_PROVIDER`、`MANUALMIND_EMBEDDING_MODEL`、`MANUALMIND_EMBEDDING_DIMENSION`、`MANUALMIND_MILVUS_COLLECTION` 仍兼容。启用 Milvus 但缺少 `MILVUS_URI` 或连接初始化失败时，会自动 fallback 到 memory，不影响启动。
 
 ## 文档
 

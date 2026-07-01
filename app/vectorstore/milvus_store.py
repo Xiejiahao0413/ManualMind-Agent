@@ -13,12 +13,13 @@ class MilvusVectorStore(VectorStore):
         token: str | None = None,
         collection_name: str = "manualmind_chunks",
         dimension: int = 1536,
+        client: Any | None = None,
     ) -> None:
         self.uri = uri
         self.token = token
         self.collection_name = collection_name
         self.dimension = dimension
-        self._client = None
+        self._client = client
 
     def status(self) -> VectorStoreStatus:
         if not self.uri:
@@ -70,6 +71,19 @@ class MilvusVectorStore(VectorStore):
         except Exception as exc:
             raise VectorStoreError("milvus_upsert_failed") from exc
 
+    def delete_doc(self, doc_id: str) -> None:
+        if not doc_id:
+            return
+        client = self._ensure_client()
+        self._ensure_collection(client)
+        try:
+            client.delete(
+                collection_name=self.collection_name,
+                filter=f'doc_id == "{_escape_filter_value(doc_id)}"',
+            )
+        except Exception as exc:
+            raise VectorStoreError("milvus_delete_failed") from exc
+
     def search(
         self,
         query_embedding: list[float],
@@ -102,21 +116,23 @@ class MilvusVectorStore(VectorStore):
 
         results: list[RetrievalResult] = []
         for hit in hits[0] if hits else []:
-            entity = hit.get("entity", {})
+            entity = _hit_entity(hit)
             source_file = entity.get("source_file") or None
+            page = _coerce_page(entity.get("page"))
+            score = _hit_score(hit)
             results.append(
                 RetrievalResult(
-                    chunk_id=str(entity.get("chunk_id") or hit.get("id") or ""),
+                    chunk_id=str(entity.get("chunk_id") or _hit_value(hit, "id", "") or ""),
                     doc_id=str(entity.get("doc_id") or ""),
                     text=str(entity.get("text") or ""),
-                    score=float(hit.get("distance") or hit.get("score") or 0.0),
-                    dense_score=float(hit.get("distance") or hit.get("score") or 0.0),
+                    score=score,
+                    dense_score=score,
                     source="milvus",
-                    source_refs=[source_file] if source_file else [],
+                    source_refs=_source_refs(source_file, page),
                     device_name=entity.get("device_name") or None,
                     device_model=entity.get("device_model") or None,
                     section_title=entity.get("section_title") or None,
-                    page=int(entity["page"]) if entity.get("page") else None,
+                    page=page,
                     content_type=entity.get("content_type") or None,
                     fault_code=entity.get("fault_code") or None,
                     source_file=source_file,
@@ -146,6 +162,52 @@ class MilvusVectorStore(VectorStore):
         try:
             if client.has_collection(self.collection_name):
                 return
+            self._create_collection(client)
+        except Exception as exc:
+            raise VectorStoreError("milvus_collection_init_failed") from exc
+
+    def _create_collection(self, client) -> None:
+        try:
+            from pymilvus import DataType
+
+            schema = client.create_schema(auto_id=False, enable_dynamic_field=True)
+            schema.add_field("chunk_id", DataType.VARCHAR, is_primary=True, max_length=256)
+            schema.add_field("doc_id", DataType.VARCHAR, max_length=256)
+            schema.add_field("text", DataType.VARCHAR, max_length=8192)
+            schema.add_field("source_file", DataType.VARCHAR, max_length=512)
+            schema.add_field("device_name", DataType.VARCHAR, max_length=256)
+            schema.add_field("device_model", DataType.VARCHAR, max_length=256)
+            schema.add_field("section_title", DataType.VARCHAR, max_length=512)
+            schema.add_field("page", DataType.INT64)
+            schema.add_field("content_type", DataType.VARCHAR, max_length=128)
+            schema.add_field("fault_code", DataType.VARCHAR, max_length=128)
+            schema.add_field("embedding", DataType.FLOAT_VECTOR, dim=self.dimension)
+            index_params = client.prepare_index_params()
+            index_params.add_index(
+                field_name="embedding",
+                index_type="AUTOINDEX",
+                metric_type="COSINE",
+            )
+            client.create_collection(
+                collection_name=self.collection_name,
+                schema=schema,
+                index_params=index_params,
+            )
+            return
+        except (ImportError, AttributeError, TypeError):
+            pass
+
+        try:
+            client.create_collection(
+                collection_name=self.collection_name,
+                dimension=self.dimension,
+                primary_field_name="chunk_id",
+                vector_field_name="embedding",
+                metric_type="COSINE",
+                auto_id=False,
+                enable_dynamic_field=True,
+            )
+        except TypeError:
             client.create_collection(
                 collection_name=self.collection_name,
                 dimension=self.dimension,
@@ -154,21 +216,64 @@ class MilvusVectorStore(VectorStore):
                 metric_type="COSINE",
                 auto_id=False,
             )
-        except Exception as exc:
-            raise VectorStoreError("milvus_collection_init_failed") from exc
 
 
 def _build_filter_expr(filters: dict[str, Any] | None = None) -> str:
     if not filters:
         return ""
-    supported = {"device_model", "fault_code", "content_type", "source_file"}
+    supported = {"device_name", "device_model", "fault_code", "content_type", "source_file", "doc_id"}
     parts: list[str] = []
     for key, value in filters.items():
         if key not in supported or value is None:
             continue
         if isinstance(value, list | tuple | set):
-            values = ", ".join(f'"{item}"' for item in value)
+            values = ", ".join(f'"{_escape_filter_value(item)}"' for item in value if item is not None)
+            if not values:
+                continue
             parts.append(f"{key} in [{values}]")
         else:
-            parts.append(f'{key} == "{value}"')
+            parts.append(f'{key} == "{_escape_filter_value(value)}"')
     return " and ".join(parts)
+
+
+def _escape_filter_value(value: object) -> str:
+    return str(value).replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _hit_entity(hit: Any) -> dict[str, Any]:
+    if isinstance(hit, dict):
+        entity = hit.get("entity") or hit.get("fields") or {}
+        return dict(entity)
+    entity = getattr(hit, "entity", None) or getattr(hit, "fields", None) or {}
+    return dict(entity)
+
+
+def _hit_value(hit: Any, key: str, default: Any = None) -> Any:
+    if isinstance(hit, dict):
+        return hit.get(key, default)
+    return getattr(hit, key, default)
+
+
+def _hit_score(hit: Any) -> float:
+    value = _hit_value(hit, "distance")
+    if value is None:
+        value = _hit_value(hit, "score", 0.0)
+    return float(value or 0.0)
+
+
+def _coerce_page(value: Any) -> int | None:
+    if value in (None, ""):
+        return None
+    try:
+        page = int(value)
+    except (TypeError, ValueError):
+        return None
+    return page if page > 0 else None
+
+
+def _source_refs(source_file: str | None, page: int | None) -> list[str]:
+    if source_file and page is not None:
+        return [f"{source_file}:{page}"]
+    if source_file:
+        return [source_file]
+    return []
